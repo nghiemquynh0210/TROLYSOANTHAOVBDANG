@@ -154,12 +154,18 @@ const App: React.FC = () => {
     getSession().then(session => {
       setAuthUser(session?.user ?? null);
       setAuthLoading(false);
-    });
-    const { data: { subscription } } = onAuthStateChange(user => {
-      setAuthUser(user);
+    }).catch(() => {
       setAuthLoading(false);
     });
-    return () => subscription.unsubscribe();
+    try {
+      const { data: { subscription } } = onAuthStateChange(user => {
+        setAuthUser(user);
+        setAuthLoading(false);
+      });
+      return () => subscription.unsubscribe();
+    } catch {
+      setAuthLoading(false);
+    }
   }, []);
 
   useEffect(() => {
