@@ -1,0 +1,351 @@
+/* Workflow Modal Overlay */
+.workflow-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* Workflow Modal Content */
+.workflow-modal-content {
+  background: white;
+  border-radius: 16px;
+  max-width: 900px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Workflow Modal Header */
+.workflow-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 24px 24px 20px;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.workflow-modal-title-section {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  flex: 1;
+}
+
+.workflow-icon {
+  color: #dc2626;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.workflow-modal-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 6px 0;
+  line-height: 1.3;
+}
+
+.workflow-modal-description {
+  font-size: 14px;
+  color: #6b7280;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.workflow-modal-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  color: #6b7280;
+  transition: all 0.2s;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.workflow-modal-close:hover {
+  background-color: #f3f4f6;
+  color: #111827;
+}
+
+/* Workflow Modal Body */
+.workflow-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* Workflow Phase */
+.workflow-phase {
+  margin-bottom: 32px;
+}
+
+.workflow-phase:last-child {
+  margin-bottom: 0;
+}
+
+.workflow-phase-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #dc2626;
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0 0 20px 0;
+  padding-bottom: 12px;
+  border-bottom: 3px solid #dc2626;
+}
+
+.phase-number {
+  background: #dc2626;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.workflow-steps {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Step Card Container */
+.step-card-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Step Card */
+.step-card {
+  background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
+  border-left: 4px solid #3b82f6;
+  padding: 16px 18px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  width: 100%;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  transition: all 0.2s;
+}
+
+.step-card:hover {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transform: translateX(4px);
+}
+
+.step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+
+.step-number {
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  padding: 5px 14px;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  box-shadow: 0 2px 4px rgba(59, 130, 246, 0.3);
+  white-space: nowrap;
+}
+
+.step-doc-type {
+  background: #e5e7eb;
+  color: #374151;
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: 'Courier New', monospace;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.step-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 10px 0;
+  line-height: 1.4;
+}
+
+.step-responsible {
+  font-size: 13px;
+  color: #6b7280;
+  font-style: italic;
+  margin: 0 0 10px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.step-description {
+  font-size: 14px;
+  color: #4b5563;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Step Arrow */
+.step-arrow {
+  text-align: center;
+  font-size: 28px;
+  color: #9ca3af;
+  margin: 4px 0 12px 0;
+  animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+/* Workflow Modal Footer */
+.workflow-modal-footer {
+  padding: 16px 24px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+  border-bottom-left-radius: 16px;
+  border-bottom-right-radius: 16px;
+}
+
+.workflow-footer-note {
+  margin: 0;
+  font-size: 13px;
+  color: #4b5563;
+  line-height: 1.6;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.workflow-footer-note strong {
+  color: #111827;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .workflow-modal-overlay {
+    padding: 12px;
+  }
+
+  .workflow-modal-content {
+    max-height: 95vh;
+  }
+
+  .workflow-modal-header {
+    padding: 20px 16px 16px;
+  }
+
+  .workflow-modal-body {
+    padding: 16px;
+  }
+
+  .workflow-modal-title {
+    font-size: 18px;
+  }
+
+  .workflow-modal-description {
+    font-size: 13px;
+  }
+
+  .workflow-phase-title {
+    font-size: 16px;
+    gap: 10px;
+  }
+
+  .phase-number {
+    width: 28px;
+    height: 28px;
+    font-size: 14px;
+  }
+
+  .step-card {
+    padding: 14px 16px;
+  }
+
+  .step-title {
+    font-size: 15px;
+  }
+
+  .step-description {
+    font-size: 13px;
+  }
+
+  .workflow-modal-footer {
+    padding: 14px 16px;
+  }
+
+  .workflow-footer-note {
+    font-size: 12px;
+  }
+}
+
+/* Scrollbar Styling */
+.workflow-modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.workflow-modal-body::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 4px;
+}
+
+.workflow-modal-body::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+.workflow-modal-body::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}

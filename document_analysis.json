@@ -1,0 +1,2053 @@
+{
+  "GIAM SAT HOAN CHINH": {
+    "name": "GIAM SAT HOAN CHINH",
+    "total_files": 12,
+    "documents": [
+      {
+        "filename": "10BIEN BAN TRIEN KHAI THONG BAO KL.docx",
+        "type": "BIÊN BẢN TRIỂN KHAI",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "III. Diễn biến:",
+          "1. Đồng chí……………………………đại diện Chi bộ nêu mục đích, yêu cầu của buổi làm việc.",
+          "2. Đ/c …………………………………… tiếp nhận các ý kiến từ Tổ giám sát và thống nhất lịch làm việc của Tổ.",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN"
+        ],
+        "placeholders": [
+          ".."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "1KE HOACH GIAM SAT CHUYEN DE.docx",
+        "type": "KẾ HOẠCH",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "KẾ HOẠCH",
+          "I. MỤC ĐÍCH, YÊU CẦU",
+          "II. NỘI DUNG",
+          "1. Thành phần Tổ giám sát",
+          "2. Nhiệm vụ, quyền hạn của Tổ giám sát",
+          "2.1. Nhiệm vụ:",
+          "2.2. Quyền hạn:",
+          "3. Nội dung:",
+          "III. TỔ CHỨC THỰC HIỆN",
+          "2. Đảng viên được giám sát nghiêm túc chấp hành các nội dung đã đề ra theo kế hoạch của chi bộ."
+        ],
+        "placeholders": [
+          "......................",
+          "(Phó Bí thư)",
+          "...............................",
+          "..........................................................................................",
+          "..",
+          "...",
+          "...............................................",
+          "................",
+          ".......",
+          "(nếu có)",
+          "(chậm nhất sau 05 ngày làm việc kể từ ngày đại diện chi bộ công bố thông báo kết luận giám sát của chi bộ đến đảng viên được giám sát)",
+          ".........................................................................................",
+          ".......................................................................................................",
+          "(đảng viên được giám sát)",
+          ".........",
+          "................................................."
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "2-1KE HOACH CUA TO GIAM SAT.docx",
+        "type": "KẾ HOẠCH CHI TIẾT CỦA TỔ",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "KẾ HOẠCH CHI TIẾT",
+          "I. ĐỀ CƯƠNG BÁO CÁO: (đảng viên được giám sát báo cáo theo đề cương đính kèm).",
+          "II. PHÂN CÔNG THÀNH VIÊN TỔ GIÁM SÁT",
+          "1. Đ/c...................................... - Tổ trưởng, phụ trách chung.",
+          "III. LỊCH LÀM VIỆC CỦA TỔ",
+          "ĐẢNG BỘ ……………………….",
+          "CHI BỘ……………………….",
+          "TỔ GIÁM SÁT",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "T/M TỔ GIÁM SÁT"
+        ],
+        "placeholders": [
+          ".............................................................................................................................",
+          "............",
+          ".....................................",
+          "..",
+          "(nếu có)",
+          "..............",
+          "....................",
+          ".................................",
+          ".......................................",
+          "(đảng viên được giám sát báo cáo theo đề cương đính kèm)",
+          "......................................",
+          "(của chi bộ)",
+          "..........................",
+          "..........",
+          "..............."
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'"
+        ]
+      },
+      {
+        "filename": "2-2GOI Y DE CUONG BC.docx",
+        "type": "ĐỀ CƯƠNG",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "ĐỀ CƯƠNG BÁO CÁO",
+          "I. NỘI DUNG BÁO CÁO",
+          "II. TỰ NHẬN XÉT VÀ KIẾN NGHỊ",
+          "2. Kiến nghị (nếu có):……………..",
+          "NGƯỜI BÁO CÁO"
+        ],
+        "placeholders": [
+          "(*)",
+          "(khi xây dựng văn bản ở mục này, cần gợi ý cụ thể đối với từng nội dung giám sát để đảng viên được giám sát báo cáo chi tiết những vấn đề mà chi bộ cần nắm để xem xét, kết luận)",
+          "(nếu có)",
+          "..",
+          "(**)",
+          "(Ký tên)"
+        ],
+        "structure_notes": [
+          "Có chỗ ký tên"
+        ]
+      },
+      {
+        "filename": "3BIEN BAN TRIEN KHAI.docx",
+        "type": "BIÊN BẢN TRIỂN KHAI",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "III. Diễn biến:",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "TỔ GIÁM SÁT",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN",
+          "ĐƯỢC GIÁM SÁT"
+        ],
+        "placeholders": [
+          "..",
+          "..."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "4BC CUA DANG VIEN DUOC GS.docx",
+        "type": "KHÁC",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "BÁO CÁO",
+          "I. NỘI DUNG BÁO CÁO",
+          "II. TỰ NHẬN XÉT VÀ KIẾN NGHỊ",
+          "2. Kiến nghị (nếu có):……………..",
+          "NGƯỜI BÁO CÁO"
+        ],
+        "placeholders": [
+          "(*)",
+          "..",
+          "...",
+          "(báo cáo cụ thể các nội dung theo gợi ý của chi bộ)",
+          "(nếu có)",
+          "(**)",
+          "(Ký tên)"
+        ],
+        "structure_notes": [
+          "Có chỗ ký tên"
+        ]
+      },
+      {
+        "filename": "5BIEN BAN  LAM VIEC VOI DANG VIEN.docx",
+        "type": "BIÊN BẢN LÀM VIỆC",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Tổ giám sát:",
+          "2. Đảng viên được giám sát: đ/c  …………………………………...().",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "TỔ GIÁM SÁT",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN"
+        ],
+        "placeholders": [
+          "(ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ giám sát với đảng viên được giám sát)",
+          "..",
+          "()",
+          "..."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "6BIEN BAN  XAC MINH.docx",
+        "type": "BIÊN BẢN XÁC MINH",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Tổ giám sát:",
+          "2.  ………………………………………………………….(1)………….",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "TỔ GIÁM SÁT",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "CHỦ TRÌ"
+        ],
+        "placeholders": [
+          "(ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ giám sát với …………………….(1)",
+          "(1)",
+          "(dùng trong quá quá trình thẩm tra, xác minh)",
+          "..",
+          "()"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "7BAO CAO KET QUA GIAM SAT.docx",
+        "type": "BÁO CÁO",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "BÁO CÁO",
+          "I. Kết quả giám sát",
+          "II. Nhận xét kiến nghị",
+          "1. Về ưu điểm:",
+          "2. Về hạn chế, nguyên nhân:",
+          "TỔ TRƯỞNG",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "TỔ GIÁM SÁT",
+          "ĐẢNG CỘNG SẢN VIỆT NAM"
+        ],
+        "placeholders": [
+          "(Nhận xét chung của Tổ giám sát về ưu điểm, hạn chế, khuyết điểm của đảng viên được giám sát theo từng nội dung đã thẩm tra, xác minh)",
+          "(họ và tên, chức vụ của đảng viên được giám sát)",
+          "(Nêu rõ kết quả thẩm tra, xác minh về từng nội dung đã được giám sát theo đề cương báo cáo; làm rõ ưu điểm, hạn chế, khuyết điểm, nguyên nhân của đảng viên được giám sát)",
+          "..",
+          "...",
+          "(ghi nội dung giám sát)",
+          "(hoặc yêu cầu)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "8BIEN BAN HOI NGHI CHI BO.docx",
+        "type": "BIÊN BẢN HỘI NGHỊ",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "TRÍCH BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Chi bộ:",
+          "2. Chủ trì: Đ/c …………………………………………………..…………….",
+          "3. Ghi biên bản: Đ/c……………………………………...……………………",
+          "II. Nội dung: Nghe Tổ giám sát thông qua dự thảo báo cáo kết quả giám sát.",
+          "III. Diễn biến",
+          "3. Chi bộ thảo luận (ghi đầy đủ họ tên và ý kiến của từng đồng chí phát biểu biểu):",
+          "GHI BIÊN BẢN\t                      \t                    CHỦ TRÌ",
+          "ĐẢNG BỘ …………………………."
+        ],
+        "placeholders": [
+          "(3)",
+          "(2)",
+          ".....",
+          "..",
+          "...",
+          "(1)",
+          "(nếu có)",
+          ".......",
+          "(ghi đầy đủ họ tên và ý kiến của từng đồng chí phát biểu biểu)",
+          "()"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "9THONG BAO KET LUAN.docx",
+        "type": "THÔNG BÁO",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "THÔNG BÁO",
+          "1. Ưu điểm:",
+          "2. Hạn chế:",
+          "3. Chi bộ yêu cầu:",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM"
+        ],
+        "placeholders": [
+          "(họ và tên, chức vụ của đảng viên được giám sát)",
+          "(ghi họ và tên, chức vụ của đảng viên)",
+          "..",
+          "(ghi nội dung đã được giám sát)",
+          "........"
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "QUY TRINH GIAM SAT CB.docx",
+        "type": "QUY TRÌNH TỔNG QUAN",
+        "has_header": false,
+        "has_signature": false,
+        "has_date": false,
+        "key_sections": [
+          "TÓM TẮT QUY TRÌNH",
+          "GIÁM SÁT CHUYÊN ĐỀ ĐỐI VỚI ĐẢNG VIÊN",
+          "I",
+          "BƯỚC CHUẨN BỊ",
+          "BƯỚC CHUẨN BỊ",
+          "BƯỚC CHUẨN BỊ",
+          "II",
+          "BƯỚC TIẾN HÀNH",
+          "BƯỚC TIẾN HÀNH",
+          "BƯỚC TIẾN HÀNH"
+        ],
+        "placeholders": [
+          "(nếu có)",
+          "(xác định rõ: thành phần tổ giám sát; nhiệm vụ, quyền hạn của tổ giám sát; nội dung, mốc thời gian giám sát; thời gian làm việc, phương pháp tiến hành…)"
+        ],
+        "structure_notes": [
+          "Có bảng"
+        ]
+      }
+    ]
+  },
+  "KIEM TRA HOAN CHINH": {
+    "name": "KIEM TRA HOAN CHINH",
+    "total_files": 12,
+    "documents": [
+      {
+        "filename": "10BIEN BAN TRIEN KHAI THONG BAO KL.docx",
+        "type": "BIÊN BẢN TRIỂN KHAI",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "III. Diễn biến:",
+          "1. Đồng chí……………………………đại diện Chi bộ nêu mục đích, yêu cầu của buổi làm việc.",
+          "2. Đ/c …………………………………… tiếp nhận các ý kiến từ Tổ kiểm tra và thống nhất lịch làm việc của Tổ.",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN"
+        ],
+        "placeholders": [
+          ".."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "1kE HOACH KIEM TRA CHUYEN DE.docx",
+        "type": "KẾ HOẠCH",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "KẾ HOẠCH",
+          "I. MỤC ĐÍCH, YÊU CẦU",
+          "II. NỘI DUNG",
+          "1. Thành phần Tổ kiểm tra",
+          "2. Nhiệm vụ, quyền hạn của Tổ kiểm tra",
+          "2.1. Nhiệm vụ:",
+          "2.2. Quyền hạn:",
+          "3. Nội dung:",
+          "III. TỔ CHỨC THỰC HIỆN",
+          "2. Đảng viên được kiểm tra nghiêm túc chấp hành các nội dung đã đề ra theo kế hoạch của chi bộ."
+        ],
+        "placeholders": [
+          "......................",
+          "(đảng viên được kiểm tra)",
+          "(Phó Bí thư)",
+          "...............................",
+          "..........................................................................................",
+          "...............................................",
+          "..",
+          "(nếu có)",
+          "................",
+          ".......",
+          "(chậm nhất sau 05 ngày làm việc kể từ ngày đại diện chi bộ công bố thông báo kết luận kiểm tra của chi bộ đến đảng viên được kiểm tra)",
+          "...................................................................................................",
+          ".........................................................................................",
+          "......................................................................................................",
+          "........."
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "2.1KE HOACH CUA TO KIEM TRA.docx",
+        "type": "KẾ HOẠCH CHI TIẾT CỦA TỔ",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "KẾ HOẠCH CHI TIẾT",
+          "I. ĐỀ CƯƠNG BÁO CÁO: (đảng viên được kiểm tra báo cáo theo đề cương đính kèm).",
+          "II. PHÂN CÔNG THÀNH VIÊN TỔ KIỂM TRA",
+          "1. Đ/c...................................... - Tổ trưởng, phụ trách chung.",
+          "III. LỊCH LÀM VIỆC CỦA TỔ",
+          "ĐẢNG BỘ ……………………….",
+          "CHI BỘ……………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "T/M TỔ KIỂM TRA"
+        ],
+        "placeholders": [
+          ".............................................................................................................................",
+          "............",
+          ".....................................",
+          "..",
+          "...",
+          "..............",
+          "(nếu có)",
+          "....................",
+          ".................................",
+          "(của chi bộ)",
+          ".......................................",
+          "......................................",
+          "(đảng viên được kiểm tra báo cáo theo đề cương đính kèm)",
+          "..........................",
+          "..........",
+          "..............."
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'"
+        ]
+      },
+      {
+        "filename": "2.2GOI Y DE CUONG BC.docx",
+        "type": "ĐỀ CƯƠNG",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "ĐỀ CƯƠNG BÁO CÁO",
+          "I. NỘI DUNG BÁO CÁO",
+          "II. TỰ NHẬN XÉT VÀ KIẾN NGHỊ",
+          "2. Kiến nghị (nếu có):……………..",
+          "NGƯỜI BÁO CÁO"
+        ],
+        "placeholders": [
+          "(*)",
+          "..",
+          "(nếu có)",
+          "(**)",
+          "(Ký tên)",
+          "(khi xây dựng văn bản ở mục này, cần gợi ý cụ thể đối với từng nội dung kiểm tra để đảng viên được kiểm tra báo cáo chi tiết những vấn đề mà chi bộ cần nắm để xem xét, kết luận)"
+        ],
+        "structure_notes": [
+          "Có chỗ ký tên"
+        ]
+      },
+      {
+        "filename": "3BIEN BAN TRIEN KHAI.docx",
+        "type": "BIÊN BẢN TRIỂN KHAI",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "III. Diễn biến:",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN",
+          "ĐƯỢC KIỂM TRA"
+        ],
+        "placeholders": [
+          "..",
+          "..."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "4BAO CAO CUA CUA DANG VIEN DUOC KT.docx",
+        "type": "BÁO CÁO",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "BÁO CÁO",
+          "I. NỘI DUNG BÁO CÁO",
+          "II. TỰ NHẬN XÉT VÀ KIẾN NGHỊ",
+          "2. Kiến nghị (nếu có):",
+          "NGƯỜI BÁO CÁO"
+        ],
+        "placeholders": [
+          "(*)",
+          "..",
+          "(nếu có)",
+          "(báo cáo cụ thể các nội dung theo gợi ý của chi bộ)",
+          "(**)",
+          "(Ký tên)",
+          ".......................................................................................................................................................................................................................................................................",
+          "....................................................................................................................................................................................................................................................................."
+        ],
+        "structure_notes": [
+          "Có chỗ ký tên"
+        ]
+      },
+      {
+        "filename": "5BIEN BAN  LAM VIEC VOI DANG VIEN.docx",
+        "type": "BIÊN BẢN LÀM VIỆC",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Tổ kiểm tra:",
+          "2. Đảng viên được kiểm tra: đ/c  …………………………………...().",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN"
+        ],
+        "placeholders": [
+          "(ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ kiểm tra với đảng viên được kiểm tra)",
+          "..",
+          "()",
+          "..."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "6BIEN BAN  XAC MINH.docx",
+        "type": "BIÊN BẢN XÁC MINH",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Tổ kiểm tra:",
+          "2.  ………………………………………………………….(1)………….",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "CHỦ TRÌ"
+        ],
+        "placeholders": [
+          "(ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ kiểm tra với …………………….(1)",
+          "(1)",
+          "(dùng trong quá quá trình thẩm tra, xác minh)",
+          "..",
+          "()"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "7 BAO CAO KET QUA KIEM TRA.docx",
+        "type": "BÁO CÁO",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "BÁO CÁO",
+          "I. Kết quả kiểm tra",
+          "II. Nhận xét kiến nghị",
+          "1. Về ưu điểm:",
+          "2. Về hạn chế, nguyên nhân:",
+          "TỔ TRƯỞNG",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM"
+        ],
+        "placeholders": [
+          "(Nêu rõ kết quả thẩm tra, xác minh về từng nội dung đã được kiểm tra theo đề cương báo cáo; làm rõ ưu điểm, hạn chế, khuyết điểm, nguyên nhân của đảng viên được kiểm tra)",
+          "(họ và tên, chức vụ của đảng viên được kiểm tra)",
+          "..",
+          "(ghi nội dung kiểm tra)",
+          "...",
+          "(hoặc yêu cầu)",
+          "(Nhận xét chung của Tổ kiểm tra về ưu điểm, hạn chế, khuyết điểm của đảng viên được kiểm tra theo từng nội dung đã thẩm tra, xác minh)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "8BIEN BAN HOI NGHI CHI BO.docx",
+        "type": "BIÊN BẢN HỘI NGHỊ",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "TRÍCH BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Chi bộ:",
+          "2. Chủ trì: Đ/c ………………………………………………….",
+          "3. Ghi biên bản: Đ/c……………………………………………",
+          "II. Nội dung: Nghe Tổ kiểm tra thông qua dự thảo báo cáo kết quả kiểm tra.",
+          "III. Diễn biến",
+          "3. Chi bộ thảo luận (ghi đầy đủ họ tên và ý kiến của từng đồng chí phát biểu biểu):",
+          "GHI BIÊN BẢN\t                      \t                    CHỦ TRÌ",
+          "ĐẢNG BỘ …………………………."
+        ],
+        "placeholders": [
+          "(3)",
+          "(2)",
+          "(1)",
+          "..",
+          "...",
+          "(nếu có)",
+          ".......",
+          "(ghi đầy đủ họ tên và ý kiến của từng đồng chí phát biểu biểu)",
+          "()"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "9THONG BAO KET LUAN.docx",
+        "type": "THÔNG BÁO",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "THÔNG BÁO",
+          "1. Ưu điểm:",
+          "2. Hạn chế:",
+          "3. Chi bộ yêu cầu:",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM"
+        ],
+        "placeholders": [
+          "(ghi họ và tên, chức vụ của đảng viên)",
+          "(họ và tên, chức vụ của đảng viên được kiểm tra)",
+          "..",
+          "...",
+          "........",
+          "(ghi nội dung đã được kiểm tra)"
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "QUY TRINH KIEM TRA.docx",
+        "type": "QUY TRÌNH TỔNG QUAN",
+        "has_header": false,
+        "has_signature": false,
+        "has_date": false,
+        "key_sections": [
+          "TÓM TẮT QUY TRÌNH",
+          "KIỂM TRA ĐẢNG VIÊN CHẤP HÀNH CHỦ TRƯƠNG, QUY ĐỊNH CỦA ĐẢNG",
+          "I",
+          "BƯỚC CHUẨN BỊ",
+          "BƯỚC CHUẨN BỊ",
+          "BƯỚC CHUẨN BỊ",
+          "II",
+          "BƯỚC TIẾN HÀNH",
+          "BƯỚC TIẾN HÀNH",
+          "BƯỚC TIẾN HÀNH"
+        ],
+        "placeholders": [
+          "(Ban hành kèm theo Quyết định số     - QĐ/ĐU ngày                 của Đảng ủy)",
+          "(trong đó xác định rõ: thành phần tổ kiểm tra; nhiệm vụ, quyền hạn tổ kiểm tra; nội dung; mốc thời gian kiểm tra; thời gian làm việc; phương pháp tiến hành…. )",
+          "(nếu có)"
+        ],
+        "structure_notes": [
+          "Có bảng"
+        ]
+      }
+    ]
+  },
+  "QUY TRINH GIAI QUYET TO CAO": {
+    "name": "QUY TRINH GIAI QUYET TO CAO",
+    "total_files": 15,
+    "documents": [
+      {
+        "filename": "1. BB LAM VIEC VOI NGUOI TO CAO.docx",
+        "type": "KHÁC",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "2. Người viết đơn tố cáo (người tố cáo trực tiếp):",
+          "2. Người viết đơn tố cáo (người tố cáo trực tiếp) trình bày ý kiến:",
+          "3. Ý kiến của đại diện chi ủy, chi bộ:",
+          "ĐẢNG BỘ PHƯỜNG AN PHÚ",
+          "CHI BỘ ………………….…",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "NGƯỜI VIẾT ĐƠN TỐ CÁO"
+        ],
+        "placeholders": [
+          "(ít nhất 02 người trở lên)",
+          "..",
+          "(người viết đơn tố cáo hoặc người tố cáo trực tiếp)",
+          "(bà)",
+          "(ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ kiểm tra với người viết đơn tố cáo hoặc người tố cáo trực tiếp)",
+          "(để nắm tình hình, xác định rõ danh tính, địa chỉ đối tượng tố cáo, đảng viên bị tố cáo và nội dung tố cáo)",
+          "(người tố cáo trực tiếp)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "2. KE HOACH CHI BO.docx",
+        "type": "KẾ HOẠCH",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "KẾ HOẠCH",
+          "I. MỤC ĐÍCH, YÊU CẦU",
+          "II. NỘI DUNG",
+          "2. Nhiệm vụ, quyền hạn của Tổ kiểm tra",
+          "2.1. Nhiệm vụ",
+          "2.2. Quyền hạn",
+          "3. Nội dung tố cáo",
+          "III. TỔ CHỨC THỰC HIỆN",
+          "2. Đảng viên bị tố cáo nghiêm túc chấp hành các nội dung đã đề ra theo kế hoạch của chi bộ.",
+          "ĐẢNG BỘ PHƯỜNG AN PHÚ"
+        ],
+        "placeholders": [
+          "......................",
+          "(người tố cáo, người bị tố cáo, người có liên quan)",
+          "(Phó Bí thư)",
+          "(họ và tên đảng viên bị tố cáo)",
+          "...............................................",
+          "..",
+          "(nếu có)",
+          "(Ghi dự kiến tổng số ngày làm việc; tính từ ngày Tổ kiểm tra nhận được đầy đủ báo cáo, tài liệu kèm theo của đảng viên bị tố cáo)",
+          "(kỷ luật, kiểm điểm, khắc phục hậu quả, ….)",
+          "(nội dung, thời gian, đối tượng, phương pháp)",
+          "(người viết đơn tố cáo hoặc người tố cáo trực tiếp)",
+          "(Tổ kiểm tra)",
+          "(đảng viên bị cáo)",
+          "(Ghi rõ tóm tắt nội dung sự việc mà người tố cáo xác định nêu trong đơn và biên bản làm việc một cách ngắn gọn, đầy đủ, đúng, chính xác từng nội dung tố cáo, không nhất thiết phải ghi nguyên văn nội dung người tố cáo nêu)",
+          "(nghiên cứu báo cáo, hồ sơ, tài liệu và chứng cứ nhận được; làm việc với người tố cáo, các tổ chức, cá nhân có liên quan đến nội dung tố cáo và đảng viên bị tố cáo)",
+          "(Báo cáo cần nêu rõ nội dung tố cáo đúng, sai, đúng một phần; mức độ, tính chất vi phạm (nếu có)"
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "2.1 KE HOACH TO KIEM TRA.docx",
+        "type": "KẾ HOẠCH CHI TIẾT CỦA TỔ",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "KẾ HOẠCH CHI TIẾT",
+          "I. ĐỀ CƯƠNG BÁO CÁO (Đảng viên báo cáo theo đề cương đính kèm)",
+          "II. PHÂN CÔNG THÀNH VIÊN TỔ \tKIỂM TRA",
+          "1. Đ/c...................................... - Tổ trưởng, phụ trách chung.",
+          "III. LỊCH LÀM VIỆC CỦA TỔ",
+          "ĐẢNG BỘ ……………………….",
+          "CHI BỘ……………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "T/M TỔ KIỂM TRA"
+        ],
+        "placeholders": [
+          "(nếu thực hiện quy trình kép)",
+          ".............................................................................................................................",
+          "..............................................",
+          "............",
+          ".....................................",
+          "..",
+          "(nếu có)",
+          "..............",
+          "....................",
+          "(Đảng viên báo cáo theo đề cương đính kèm)",
+          ".......................................",
+          "......................................",
+          "..............."
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'"
+        ]
+      },
+      {
+        "filename": "2.2 DE CUONG GOI Y.docx",
+        "type": "ĐỀ CƯƠNG",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "ĐỀ CƯƠNG GỢI Ý BÁO CÁO GIẢI TRÌNH",
+          "I. SƠ LƯỢC LÝ LỊCH",
+          "II. NỘI DUNG"
+        ],
+        "placeholders": [
+          "(Đảng viên báo cáo đầy đủ, cụ thể, chi tiết nội dung theo kế hoạch của chi bộ yêu cầu)",
+          "..",
+          "...",
+          "(nêu khái quát quá trình công tác, các chức vụ chính đã qua)",
+          "(nếu đã bị thi hành kỷ luật về Đảng, chính quyền, đoàn thể, ghi rõ thời gian, hình thức kỷ luật, nội dung vi phạm, cấp quyết định)",
+          "(các loại huân chương, huy chương; hình thức, danh hiệu khen thưởng bậc cao đã được tặng thưởng)",
+          "(Đính kèm kế hoạch chi tiết của Tổ kiểm tra)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "3. BB TRIEN KHAI KE HOACH.docx",
+        "type": "KẾ HOẠCH",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. THÀNH PHẦN THAM DỰ",
+          "2. Đảng viên bị tố cáo",
+          "III. Diễn biến:",
+          "ĐẢNG BỘ PHƯỜNG AN PHÚ",
+          "CHI BỘ ………………….…",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN ĐƯỢC"
+        ],
+        "placeholders": [
+          "(đảng viên bị tố cáo)",
+          "(ý kiến khác)",
+          "..",
+          "(đại diện Tổ kiểm tra)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "4. BAO CAO GIAI TRINH CUA DANG VIEN.docx",
+        "type": "BÁO CÁO",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "BÁO CÁO GIẢI TRÌNH",
+          "I. SƠ LƯỢC LÝ LỊCH",
+          "II. NỘI DUNG"
+        ],
+        "placeholders": [
+          "(Đảng viên báo cáo đầy đủ, cụ thể, chi tiết nội dung theo gợi ý của chi bộ yêu cầu)",
+          "..",
+          "...",
+          "(nêu khái quát quá trình công tác, các chức vụ chính đã qua)",
+          "(nếu đã bị thi hành kỷ luật về Đảng, chính quyền, đoàn thể, ghi rõ thời gian, hình thức kỷ luật, nội dung vi phạm, cấp quyết định)",
+          "(các loại huân chương, huy chương; hình thức, danh hiệu khen thưởng bậc cao đã được tặng thưởng)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "5. BB XAC MINH.docx",
+        "type": "KHÁC",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. THÀNH PHẦN THAM DỰ",
+          "1. Tổ kiểm tra:",
+          "2.  ………………………………………………………….(1)………….",
+          "II. NỘI DUNG VÀ DIỄN BIẾN",
+          "GHI BIÊN BẢN\t            (1)     \t            T/M TỔ KIỂM TRA",
+          "TỔ TRƯỞNG",
+          "ĐẢNG BỘ PHƯỜNG AN PHÚ",
+          "CHI BỘ ………………….…",
+          "TỔ KIỂM TRA"
+        ],
+        "placeholders": [
+          "(1)",
+          "..",
+          "(Ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ kiểm tra với ……(1)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "5. BIEN BAN LAM VIEC VOI DANG VIEN.docx",
+        "type": "BIÊN BẢN LÀM VIỆC",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Tổ kiểm tra:",
+          "2. Đảng viên được kiểm tra: đ/c  …………………………………...().",
+          "ĐẢNG BỘ ……………",
+          "CHI BỘ………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN"
+        ],
+        "placeholders": [
+          "....",
+          "..",
+          "...",
+          "(ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ kiểm tra với đảng viên được kiểm tra)",
+          "()"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "6. BAO CAO CUA TO KIEM TRA.docx",
+        "type": "BÁO CÁO",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "BÁO CÁO",
+          "I. SƠ LƯỢC LÝ LỊCH",
+          "II. NỘI DUNG TỐ CÁO",
+          "III. KẾT QUẢ THẨM TRA, XÁC MINH",
+          "IV. NHẬN XÉT VÀ ĐỀ NGHỊ",
+          "1. Ý kiến của các tổ chức đảng, đảng viên có liên quan về nội dung giải quyết tố cáo.",
+          "TỔ TRƯỞNG",
+          "ĐẢNG BỘ ………….",
+          "CHI BỘ………………",
+          "ĐẢNG CỘNG SẢN VIỆT NAM"
+        ],
+        "placeholders": [
+          "(các loại huân chương, huy chương đã được tặng thưởng)",
+          "(nếu thấy vi phạm đến mức phải thi hành kỷ luật)",
+          "(nêu khái quát quá trình công tác, chức vụ chính đã qua)",
+          "..",
+          "...",
+          "(ghi theo kế hoạch giải quyết tố cáo của Chi bộ…)",
+          "(tố cáo đúng)",
+          "(nếu đã bị kỷ luật, ghi rõ thời gian, hình thức kỷ luật, nội dung vi phạm, cấp quyết định)",
+          "(họ và tên, chức vụ, nơi công tác của đảng viên bị tố cáo)",
+          ".........................."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "7. BB HOI NGHI CHI BO.docx",
+        "type": "KHÁC",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. THÀNH PHẦN",
+          "1. Chi bộ:",
+          "2. Chủ trì: Đ/c ………………………………………………….",
+          "3. Ghi biên bản: Đ/c……………………………………………",
+          "II. NỘI DUNG",
+          "III. DIỄN BIẾN",
+          "1. Đại diện Tổ kiểm tra trình bày dự thảo báo cáo kết quả giải quyết tố cáo…..",
+          "2. Đảng viên bị tố cáo trình bày ý kiến giải trình, tự nhận hình thức kỷ luật (Nếu có)",
+          "GHI BIÊN BẢN                                                                 CHỦ TRÌ"
+        ],
+        "placeholders": [
+          "(nếu thực hiện quy trình kép)",
+          "..",
+          "(nếu có)",
+          "(ghi đầy đủ họ tên và ý kiến của từng đồng chí phát biểu)",
+          "...",
+          "(tùy tình hình thực tế để chi bộ vận dụng viết biên bản cho phù hợp)",
+          "(Nếu có)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "8.THONG BAO KET LUAN.docx",
+        "type": "THÔNG BÁO",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "THÔNG BÁO",
+          "ĐẢNG BỘ ………………………..",
+          "CHI BỘ ………………….…",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "T/M CHI BỘ",
+          "BÍ THƯ"
+        ],
+        "placeholders": [
+          "(đề nghị)",
+          "(từng nội dung tố cáo diễn giải ngắn gọn, đầy đủ; nêu nhận xét, đánh giá, kết luận cụ thể, khách quan. Sau mỗi nội dung tố cáo, nêu kết luận của Tổ kiểm tra.... về nội dung đó: Tố cáo sai, tố cáo không có cơ sở, chưa đủ căn cứ kết luận, tố cáo đúng có khuyết điểm, tố cáo đúng có vi phạm)",
+          "..",
+          "....",
+          "...",
+          "(nếu có)",
+          "(các tổ chức đảng có liên quan)",
+          "(đối tượng bị tố cáo)",
+          "(báo cáo)",
+          "(họ và tên, chức vụ, nơi công tác của đảng viên bị tố cáo)"
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "BIEN BAN KIEM PHIEU THI HANH KY LUAT.docx",
+        "type": "BIÊN BẢN KIỂM PHIẾU",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "1. Đồng chí……………………………..- Tổ trưởng;",
+          "2. Đồng chí……………………………..- Thư ký;",
+          "3. Đồng chí……………………………..- Tổ viên.",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM"
+        ],
+        "placeholders": [
+          "(1)",
+          "..",
+          "(có lý do….đồng chí; không có lý do……đồng chí)",
+          "(so với tổng số đảng viên chính thức của chi bộ)",
+          "(ký, ghi rõ họ và tên)"
+        ],
+        "structure_notes": [
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "PHIEU BIEU QUYET DE NGHI KY LUAT.docx",
+        "type": "PHIẾU BIỂU QUYẾT",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "PHIẾU BIỂU QUYẾT",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "1. Không kỷ luật",
+          "2. Khiển trách",
+          "3. Cảnh cáo"
+        ],
+        "placeholders": [
+          "(3)",
+          "(để biểu quyết rõ việc cách chức một hay các nhiệm kỳ cụ thể)",
+          "(2)",
+          "(1)",
+          "..",
+          "(họ và tên, chức vụ)",
+          "...",
+          "(4)",
+          "(Ghi đầy đủ chức vụ từ khi vi phạm đến thời điểm hiện tại của đảng viên)",
+          "(Cách chức)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "PHIEU BIEU QUYET THI HANH KY LUAT.docx",
+        "type": "PHIẾU BIỂU QUYẾT",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "PHIẾU BIỂU QUYẾT",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "1. Không kỷ luật",
+          "2. Khiển trách",
+          "3. Cảnh cáo"
+        ],
+        "placeholders": [
+          "(họ và tên, chức vụ)",
+          ".."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "QUY TRINH GIAI QUYET TO CAO.docx",
+        "type": "QUY TRÌNH TỔNG QUAN",
+        "has_header": false,
+        "has_signature": false,
+        "has_date": false,
+        "key_sections": [
+          "TÓM TẮT QUY TRÌNH",
+          "GIẢI QUYẾT TỐ CÁO ĐỐI VỚI ĐẢNG VIÊN",
+          "I",
+          "BƯỚC CHUẨN BỊ",
+          "BƯỚC CHUẨN BỊ",
+          "BƯỚC CHUẨN BỊ",
+          "II",
+          "BƯỚC TIẾN HÀNH",
+          "BƯỚC TIẾN HÀNH",
+          "BƯỚC TIẾN HÀNH"
+        ],
+        "placeholders": [
+          "(Ban hành kèm theo Quyết định số     - QĐ/ĐU ngày                 của Đảng ủy)",
+          "(nếu thực hiện quy trình kép)",
+          "(tổ kiểm tra)",
+          "(nếu có)",
+          "(người viết đơn tố cáo hoặc người tố cáo trực tiếp)",
+          "(ít nhất 2 người trở lên, không liên quan đến nội dung tố cáo)",
+          "(khi làm việc với người tố cáo phải lập biên bản buổi làm việc)"
+        ],
+        "structure_notes": [
+          "Có bảng"
+        ]
+      }
+    ]
+  },
+  "QUY TRINH KT DAU HIEU VI PHAM": {
+    "name": "QUY TRINH KT DAU HIEU VI PHAM",
+    "total_files": 18,
+    "documents": [
+      {
+        "filename": "1. KE HOACH KIEM TRA.docx",
+        "type": "KẾ HOẠCH",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "KẾ HOẠCH",
+          "I. MỤC ĐÍCH, YÊU CẦU",
+          "1. Mục đích",
+          "2. Yêu cầu",
+          "II. NỘI DUNG THỰC HIỆN",
+          "1. Thành phần tổ kiểm tra",
+          "2. Nhiệm vụ, quyền hạn của Tổ kiểm tra",
+          "2.1 Nhiệm vụ",
+          "2.2 Quyền hạn",
+          "3. Nội dung kiểm tra: (Ghi đầy đủ, cụ thể, chi tiết nội dung kiểm tra)"
+        ],
+        "placeholders": [
+          "......................",
+          "(Phó Bí thư)",
+          "..........................................................................................",
+          "...............................................",
+          "..",
+          "(nếu có)",
+          ".........................................................................................",
+          "(Ghi đầy đủ, cụ thể, chi tiết nội dung kiểm tra)"
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "10. BB TRIEN KHAI QUY TRINH KY LUAT.docx",
+        "type": "QUY TRÌNH TỔNG QUAN",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Đại diện chi bộ:",
+          "2. Đảng viên được kiểm tra:",
+          "II. Nội dung",
+          "1. Đồng chí………………..đại diện chi bộ triển khai thực hiện quy trình thi hành kỷ luật.",
+          "2. Đ/c ………………………….. đồng ý thực hiện quy trình thi hành kỷ luật hoặc có ý kiến khác.",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM"
+        ],
+        "placeholders": [
+          ".."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "11. BIEN BAN KIEM PHIEU THI HANH KY LUAT.docx",
+        "type": "BIÊN BẢN KIỂM PHIẾU",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "1. Đồng chí……………………………..- Tổ trưởng;",
+          "2. Đồng chí……………………………..- Thư ký;",
+          "3. Đồng chí……………………………..- Tổ viên.",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM"
+        ],
+        "placeholders": [
+          "(1)",
+          "..",
+          "(có lý do….đồng chí; không có lý do……đồng chí)",
+          "(so với tổng số đảng viên chính thức của chi bộ)",
+          "(ký, ghi rõ họ và tên)"
+        ],
+        "structure_notes": [
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "12. QUYET DINH KY LUAT.docx",
+        "type": "QUYẾT ĐỊNH",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "QUYẾT ĐỊNH",
+          "CHI BỘ………. QUYẾT ĐỊNH",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "T/M CHI BỘ",
+          "BÍ THƯ"
+        ],
+        "placeholders": [
+          "(để báo cáo)",
+          "....",
+          "..",
+          "(tóm tắt nội dung, tính chất, mức độ, tác hại và nguyên nhân vi phạm của đảng viên; ghi rõ đã vi phạm quy định nào theo nội dung kết luận của Chi bộ…)",
+          "(họ và tên, chức vụ, nơi công tác của đảng viên)",
+          "(Tên cấp ủy, tổ chức đảng liên quan trực tiếp đến việc thực hiện Quyết định)",
+          "........................................",
+          "(họ và tên của đảng viên)"
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "13. BB TRIEN KHAI QUYET DINH KY LUAT.docx",
+        "type": "QUYẾT ĐỊNH",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Đại diện chi bộ:",
+          "2. Đảng viên được kiểm tra:",
+          "II. Nội dung",
+          "2. Đ/c ………………………….. tiếp nhận quyết định thi hành kỷ luật hoặc có ý kiến khác:",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN"
+        ],
+        "placeholders": [
+          ".."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "2.1 KE HOACH CHI TIET CUA TO KIEM TRA.docx",
+        "type": "KẾ HOẠCH CHI TIẾT CỦA TỔ",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "KẾ HOẠCH CHI TIẾT",
+          "I. ĐỀ CƯƠNG BÁO CÁO (đảng viên được kiểm tra báo cáo theo đề cương đính kèm)",
+          "II. PHÂN CÔNG THÀNH VIÊN TỔ KIỂM TRA",
+          "1. Đ/c...................................... - Tổ trưởng, phụ trách chung.",
+          "III. LỊCH LÀM VIỆC CỦA TỔ",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "TỔ  KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "T/M TỔ KIỂM TRA"
+        ],
+        "placeholders": [
+          ".............................................................................................................................",
+          ".....................................",
+          "..",
+          ".................................",
+          ".......................................",
+          "......................................",
+          "(đảng viên được kiểm tra báo cáo theo đề cương đính kèm)",
+          "..........................",
+          "(…. bộ)"
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'"
+        ]
+      },
+      {
+        "filename": "2.2 DE CUONG BAO CAO.docx",
+        "type": "BÁO CÁO",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "BÁO CÁO",
+          "I. SƠ YẾU LÝ LỊCH",
+          "II. NỘI DUNG BÁO CÁO GIẢI TRÌNH (ghi theo yêu cầu nội dung  của đề cương Tổ gửi)",
+          "III. TỰ NHẬN XÉT VÀ KIẾN NGHỊ",
+          "1. Tự nhận xét",
+          "2. Kiến nghị (nếu có):………………………………………………………..",
+          "NGƯỜI BÁO CÁO"
+        ],
+        "placeholders": [
+          "..",
+          "...",
+          "(nếu có)",
+          "(nêu khái quát quá trình công tác, các chức vụ chính đã qua)",
+          "(Ký tên)",
+          "(ghi theo yêu cầu nội dung  của đề cương Tổ gửi)",
+          "(nếu đã bị thi hành kỷ luật về Đảng, chính quyền, đoàn thể, ghi rõ thời gian, hình thức kỷ luật, nội dung vi phạm, cấp quyết định)",
+          "(các loại huân chương, huy chương; hình thức, danh hiệu khen thưởng bậc cao đã được tặng thưởng)"
+        ],
+        "structure_notes": [
+          "Có số văn bản",
+          "Có chỗ ký tên"
+        ]
+      },
+      {
+        "filename": "3. BIEN BAN TRIEN KHAI KE HOACH.docx",
+        "type": "KẾ HOẠCH",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Tổ kiểm tra:",
+          "2. Đảng viên được kiểm tra:",
+          "III. Diễn biến:",
+          "ĐẢNG BỘ ……………",
+          "CHI BỘ………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN"
+        ],
+        "placeholders": [
+          "....",
+          "..",
+          "(đại diện Tổ kiểm tra)",
+          "..."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "4. BIEN BAN LAM VIEC TCD, CN CO LIEN QUAN.docx",
+        "type": "BIÊN BẢN LÀM VIỆC",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Tổ kiểm tra:",
+          "2.  ………………………………………………………….(1)………….",
+          "ĐẢNG BỘ ……………",
+          "CHI BỘ………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "TỔ CHỨC (ĐẢNG VIÊN)"
+        ],
+        "placeholders": [
+          "(đảng viên)",
+          "(ĐẢNG VIÊN)",
+          "(ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ kiểm tra với …………………….(1)",
+          "(1)",
+          "....",
+          "..",
+          "...",
+          "()"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "5. BIEN BAN LAM VIEC VOI DANG VIEN.docx",
+        "type": "BIÊN BẢN LÀM VIỆC",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Tổ kiểm tra:",
+          "2. Đảng viên được kiểm tra: đ/c  …………………………………...().",
+          "ĐẢNG BỘ ……………",
+          "CHI BỘ………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN"
+        ],
+        "placeholders": [
+          "....",
+          "..",
+          "...",
+          "(ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ kiểm tra với đảng viên được kiểm tra)",
+          "()"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "6. BAO CAO KET QUA KIEM TRA.docx",
+        "type": "BÁO CÁO",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "BÁO CÁO",
+          "I. Sơ yếu lý lịch",
+          "II. Kết quả thẩm tra, xác minh",
+          "1. Ý kiến của tổ chức, đảng viên có liên quan về nội dung kiểm tra.",
+          "ĐẢNG BỘ ……………",
+          "CHI BỘ………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "TỔ TRƯỞNG"
+        ],
+        "placeholders": [
+          "(ký và ghi rõ họ tên)",
+          ".....",
+          "..",
+          "...",
+          "....",
+          "(nếu có)",
+          "....................",
+          ".......",
+          "(nêu khái quát quá trình công tác, các chức vụ chính đã qua)",
+          "(nếu đã bị thi hành kỷ luật về Đảng, chính quyền, đoàn thể, ghi rõ thời gian, hình thức kỷ luật, nội dung vi phạm, cấp quyết định)",
+          "(các loại huân chương, huy chương; hình thức, danh hiệu khen thưởng bậc cao đã được tặng thưởng)"
+        ],
+        "structure_notes": [
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "7. BIEN BAN HOI NGHI.docx",
+        "type": "BIÊN BẢN HỘI NGHỊ",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần",
+          "1. Chi bộ:",
+          "2. Chủ trì: Đ/c ………………………………………………….",
+          "3. Ghi biên bản: Đ/c……………………………………………",
+          "II. Nội dung: Nghe Tổ kiểm tra thông qua dự thảo báo cáo kết quả kiểm tra.",
+          "III. Diễn biến",
+          "1. Đại diện Tổ kiểm tra trình bày dự thảo báo cáo kết quả kiểm tra.",
+          "ĐẢNG BỘ………………….",
+          "CHI BỘ…………"
+        ],
+        "placeholders": [
+          "(thực hiện quy trình kép)",
+          "(ghi tóm tắt kết quả biểu quyết)",
+          "..",
+          "(nếu có)",
+          "(ghi đầy đủ họ tên và ý kiến của từng đồng chí phát biểu)",
+          "...",
+          ".........................................................."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "8. THONG BAO KET LUAN.docx",
+        "type": "THÔNG BÁO",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "THÔNG BÁO",
+          "2. Chi bộ …………yêu cầu/kiến nghị (đề nghị):",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "T/M CHI BỘ"
+        ],
+        "placeholders": [
+          "(đề nghị)",
+          ".....................................",
+          "..",
+          "(nếu có)",
+          "(báo cáo)",
+          "........",
+          ".........................."
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "9. BB TRIEN KHAI THONG BAO KET LUAN.docx",
+        "type": "THÔNG BÁO",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Đại diện chi bộ:",
+          "2. Đảng viên được kiểm tra:",
+          "II. Nội dung",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN"
+        ],
+        "placeholders": [
+          "..",
+          "..."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "MUC LUC VA CHUNG TU KET THUC.docx",
+        "type": "MỤC LỤC",
+        "has_header": false,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "MỤC LỤC",
+          "CHỨNG TỪ KẾT THÚC",
+          "….KH/CB",
+          "….TB/CB",
+          "…QĐ/CB"
+        ],
+        "placeholders": [
+          "( họ và tên, chức vụ của đảng viên được kiểm tra)",
+          ".....",
+          "..",
+          "(Ký, ghi rõ họ và tên)",
+          "...",
+          "(nếu có)",
+          "(viết bằng chữ: ………………..)",
+          "(……………….. )"
+        ],
+        "structure_notes": [
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "PHIEU BIEU QUYET DE NGHI KY LUAT.docx",
+        "type": "PHIẾU BIỂU QUYẾT",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "PHIẾU BIỂU QUYẾT",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "1. Không kỷ luật",
+          "2. Khiển trách",
+          "3. Cảnh cáo"
+        ],
+        "placeholders": [
+          "(3)",
+          "(để biểu quyết rõ việc cách chức một hay các nhiệm kỳ cụ thể)",
+          "(2)",
+          "(1)",
+          "..",
+          "(họ và tên, chức vụ)",
+          "...",
+          "(4)",
+          "(Ghi đầy đủ chức vụ từ khi vi phạm đến thời điểm hiện tại của đảng viên)",
+          "(Cách chức)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "PHIEU BIEU QUYET THI HANH KY LUAT.docx",
+        "type": "PHIẾU BIỂU QUYẾT",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "PHIẾU BIỂU QUYẾT",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "1. Không kỷ luật",
+          "2. Khiển trách",
+          "3. Cảnh cáo"
+        ],
+        "placeholders": [
+          "(họ và tên, chức vụ)",
+          ".."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "QUY TRINH KIEM TRA DV KHI CO DAU HIEU VI PHAM.docx",
+        "type": "QUY TRÌNH TỔNG QUAN",
+        "has_header": false,
+        "has_signature": false,
+        "has_date": false,
+        "key_sections": [
+          "TÓM TẮT QUY TRÌNH",
+          "KIỂM TRA ĐẢNG VIÊN KHI CÓ DẤU HIỆU VI PHẠM",
+          "I",
+          "BƯỚC CHUẨN BỊ",
+          "BƯỚC CHUẨN BỊ",
+          "BƯỚC CHUẨN BỊ",
+          "II",
+          "BƯỚC TIẾN HÀNH",
+          "BƯỚC TIẾN HÀNH",
+          "BƯỚC TIẾN HÀNH"
+        ],
+        "placeholders": [
+          "(Ban hành kèm theo Quyết định số     - QĐ/ĐU ngày                 của Đảng ủy)",
+          "(nếu thực hiện quy trình kép)",
+          "(trong đó xác định rõ: thành phần tổ kiểm tra; nhiệm vụ, quyền hạn của tổ kiểm tra; nội dung, mốc thời gian kiểm tra; thời gian làm việc, phương pháp tiến hành...)",
+          "(thực hiện quy trình kép)",
+          "...",
+          "(nếu có)"
+        ],
+        "structure_notes": [
+          "Có bảng"
+        ]
+      }
+    ]
+  },
+  "QUY TRINH THI HANH KY LUAT": {
+    "name": "QUY TRINH THI HANH KY LUAT",
+    "total_files": 13,
+    "documents": [
+      {
+        "filename": "1. KE HOACH CHI BO.docx",
+        "type": "KẾ HOẠCH",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "KẾ HOẠCH",
+          "I. MỤC ĐÍCH, YÊU CẦU",
+          "II. NỘI DUNG",
+          "2. Nhiệm vụ, quyền hạn của Tổ kiểm tra",
+          "2.1. Nhiệm vụ:",
+          "2.2. Quyền hạn:",
+          "3. Nội dung kiểm tra",
+          "III. TỔ CHỨC THỰC HIỆN",
+          "2. Đảng viên vi phạm nghiêm túc chấp hành các nội dung đã đề ra theo kế hoạch của chi bộ.",
+          "ĐẢNG BỘ ………………………."
+        ],
+        "placeholders": [
+          "......................",
+          "(đề nghị)",
+          "...........................................................................................",
+          "(Phó Bí thư)",
+          "(chậm nhất sau 05 ngày làm việc kể từ ngày đại diện chi bộ công bố quyết định kỷ luật đến đảng viên vi phạm)",
+          "(nếu tổ kiểm tra đề xuất hình thức kỷ luật thuộc thẩm quyền của chi bộ)",
+          "(Ghi đầy đủ, cụ thể, chi tiết nội dung kiểm tra đối với cá nhân được kiểm tra)",
+          "...............................................",
+          "..",
+          "(nếu có)",
+          "................",
+          "(nếu không thuộc thẩm quyền của chi bộ)",
+          "(đảng viên vi phạm)",
+          "....................................................................................................",
+          "(nếu cần)",
+          "(nếu tổ kiểm tra đề xuất không kỷ luật)",
+          "................................"
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "10. BIEN BAN KIEM PHIEU THI HANH KY LUAT.docx",
+        "type": "BIÊN BẢN KIỂM PHIẾU",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "1. Đồng chí……………………………..- Tổ trưởng;",
+          "2. Đồng chí……………………………..- Thư ký;",
+          "3. Đồng chí……………………………..- Tổ viên.",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM"
+        ],
+        "placeholders": [
+          "(1)",
+          "..",
+          "(có lý do….đồng chí; không có lý do……đồng chí)",
+          "(so với tổng số đảng viên chính thức của chi bộ)",
+          "(ký, ghi rõ họ và tên)"
+        ],
+        "structure_notes": [
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "11. QUYET DINH KY LUAT.docx",
+        "type": "QUYẾT ĐỊNH",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "QUYẾT ĐỊNH",
+          "CHI BỘ………. QUYẾT ĐỊNH",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "T/M CHI BỘ",
+          "BÍ THƯ"
+        ],
+        "placeholders": [
+          "(để báo cáo)",
+          "....",
+          "..",
+          "(tóm tắt nội dung, tính chất, mức độ, tác hại và nguyên nhân vi phạm của đảng viên; ghi rõ đã vi phạm quy định nào theo nội dung kết luận của Chi bộ…)",
+          "(họ và tên, chức vụ, nơi công tác của đảng viên)",
+          "(Tên cấp ủy, tổ chức đảng liên quan trực tiếp đến việc thực hiện Quyết định)",
+          "........................................",
+          "(họ và tên của đảng viên)"
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'",
+          "Có số văn bản"
+        ]
+      },
+      {
+        "filename": "2.1 KE HOACH CUA TO KIEM TRA.docx",
+        "type": "KẾ HOẠCH CHI TIẾT CỦA TỔ",
+        "has_header": true,
+        "has_signature": true,
+        "has_date": true,
+        "key_sections": [
+          "KẾ HOẠCH CHI TIẾT",
+          "I. ĐỀ CƯƠNG BÁO CÁO",
+          "II. PHÂN CÔNG THÀNH VIÊN TỔ \tKIỂM TRA",
+          "1. Đ/c...................................... - Tổ trưởng, phụ trách chung.",
+          "III. LỊCH LÀM VIỆC CỦA TỔ",
+          "ĐẢNG BỘ ……………………….",
+          "CHI BỘ……………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "T/M TỔ KIỂM TRA"
+        ],
+        "placeholders": [
+          "(nếu tổ kiểm tra đề xuất hình thức kỷ luật thuộc thẩm quyền của chi bộ)",
+          "(nếu có)",
+          ".................................",
+          "(Đảng viên báo cáo theo đề cương đính kèm)",
+          ".......................................",
+          "......................................",
+          "(nếu tổ kiểm tra đề xuất không kỷ luật)",
+          ".............................................................................................................................",
+          "...............",
+          "............",
+          ".....................................",
+          "..........",
+          "(nếu không thuộc thẩm quyền của chi bộ)",
+          "..",
+          "(đề nghị)",
+          "....................",
+          "(nếu cần)",
+          "..........................",
+          ".............."
+        ],
+        "structure_notes": [
+          "Có phần 'Nơi nhận'"
+        ]
+      },
+      {
+        "filename": "2.2 DE CUONG BAO CAO.docx",
+        "type": "BÁO CÁO",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "ĐỀ CƯƠNG BÁO CÁO KIỂM ĐIỂM",
+          "I. SƠ LƯỢC LÝ LỊCH",
+          "II. NỘI DUNG VÀ NGUYÊN NHÂN VI PHẠM",
+          "III. TỰ NHẬN HÌNH THỨC KỶ LUẬT"
+        ],
+        "placeholders": [
+          "(Đảng viên báo cáo đầy đủ, cụ thể, chi tiết nội dung theo kế hoạch của chi bộ yêu cầu)",
+          "..",
+          "...",
+          "(Đảng viên trình bày rõ nguyên nhân của từng vi phạm)",
+          "(nêu khái quát quá trình công tác, các chức vụ chính đã qua)",
+          "(nếu đã bị thi hành kỷ luật về Đảng, chính quyền, đoàn thể, ghi rõ thời gian, hình thức kỷ luật, nội dung vi phạm, cấp quyết định)",
+          "(các loại huân chương, huy chương; hình thức, danh hiệu khen thưởng bậc cao đã được tặng thưởng)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "3. BIEN BAN TRIEN KHAI.docx",
+        "type": "BIÊN BẢN TRIỂN KHAI",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. THÀNH PHẦN THAM DỰ",
+          "2. Đảng viên vi phạm:",
+          "III. Diễn biến:",
+          "ĐẢNG BỘ PHƯỜNG AN PHÚ",
+          "CHI BỘ……………………..",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN ĐƯỢC"
+        ],
+        "placeholders": [
+          "..",
+          "(đại diện Tổ kiểm tra)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "4. BAO CAO KIEM DIEM DANG VIEN.docx",
+        "type": "BÁO CÁO",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BÁO CÁO KIỂM ĐIỂM",
+          "I. SƠ LƯỢC LÝ LỊCH",
+          "II. NỘI DUNG VÀ NGUYÊN NHÂN VI PHẠM",
+          "III. TỰ NHẬN HÌNH THỨC KỶ LUẬT",
+          "ĐẢNG BỘ ………………….",
+          "CHI BỘ …………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM"
+        ],
+        "placeholders": [
+          "(đề nghị)",
+          "(Đảng viên phải trình bày rõ diễn biến, nội dung, tính chất, mức độ, tác hại, nguyên nhân của từng vi phạm và phương hướng khắc phục vi phạm)",
+          "..",
+          "...",
+          "(nêu khái quát quá trình công tác, các chức vụ chính đã qua)",
+          "(nếu đã bị thi hành kỷ luật về Đảng, chính quyền, đoàn thể, ghi rõ thời gian, hình thức kỷ luật, nội dung vi phạm, cấp quyết định)",
+          "(các loại huân chương, huy chương; hình thức, danh hiệu khen thưởng bậc cao đã được tặng thưởng)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "5.1 BIEN BAN LAM VIEC VOI DANG VIEN.docx",
+        "type": "BIÊN BẢN LÀM VIỆC",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. Thành phần tham dự",
+          "1. Tổ kiểm tra:",
+          "2. Đảng viên được kiểm tra: đ/c  …………………………………...().",
+          "ĐẢNG BỘ ……………",
+          "CHI BỘ………………….",
+          "TỔ KIỂM TRA",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "GHI BIÊN BẢN",
+          "ĐẢNG VIÊN"
+        ],
+        "placeholders": [
+          "....",
+          "..",
+          "...",
+          "(ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ kiểm tra với đảng viên được kiểm tra)",
+          "()"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "5.2 BIEN BAN THAM TRA, XAC MINH.docx",
+        "type": "BIÊN BẢN XÁC MINH",
+        "has_header": false,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. THÀNH PHẦN THAM DỰ",
+          "1. Tổ kiểm tra:",
+          "2.  ………………………………………………………….(1)………….",
+          "II. NỘI DUNG VÀ DIỄN BIẾN",
+          "GHI BIÊN BẢN           TỔ CHỨC (CÁ NHÂN)                CHỦ TRÌ",
+          "LÀM VIỆC",
+          "ĐẢNG BỘ……………..",
+          "CHI BỘ……………",
+          "TỔ KIỂM TRA"
+        ],
+        "placeholders": [
+          "(CÁ NHÂN)",
+          "(Ghi đầy đủ nội dung và diễn biến cuộc làm việc của Tổ kiểm tra với ...(1)",
+          "(1)",
+          "..",
+          "...",
+          "(Dùng trong quá quá trình thẩm tra, xác minh)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "7. BB HN CHI BO.docx",
+        "type": "KHÁC",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "BIÊN BẢN",
+          "I. THÀNH PHẦN",
+          "1. Chi bộ:",
+          "2. Chủ trì: Đ/c ………………………………………………….",
+          "3. Ghi biên bản: Đ/c……………………………………………",
+          "II. NỘI DUNG",
+          "III. DIỄN BIẾN",
+          "1. Đảng viên vi phạm trình bày báo cáo kiểm điểm, tự nhận hình thức kỷ luật.",
+          "GHI BIÊN BẢN    \t\t\t\t\t\tCHỦ TRÌ",
+          "ĐẢNG BỘ …………………………."
+        ],
+        "placeholders": [
+          "(3)",
+          "(đề nghị)",
+          "(UBKT Đảng ủy nếu chi bộ cơ sở trực thuộc Đảng ủy; đảng ủy cơ sở nếu chi bộ trực thuộc đảng bộ cơ sở)",
+          "(2)",
+          "(ghi rõ chức vụ bị cách)",
+          "(Ghi tóm tắt kết quả kiểm phiếu biểu quyết )",
+          "(1)",
+          "..",
+          "(nếu có)",
+          "(ghi đầy đủ họ tên và ý kiến của từng đồng chí phát biểu)",
+          "...",
+          "(Tóm tắt nội dung, tính chất, mức độ, tác hại, nguyên nhân của vi phạm, ghi rõ đã vi phạm quy định nào của Đảng, các tình tiết tăng nặng, giảm nhẹ)",
+          "(nếu thuộc thẩm quyền)",
+          "(ngày….tháng…năm….)",
+          "(khiển trách, cảnh cáo)",
+          "(nếu không thuộc thẩm quyền)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "9. PHIEU BIEU QUYET THI HANH KY LUAT.docx",
+        "type": "PHIẾU BIỂU QUYẾT",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "PHIẾU BIỂU QUYẾT",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "1. Không kỷ luật",
+          "2. Khiển trách",
+          "3. Cảnh cáo"
+        ],
+        "placeholders": [
+          "(họ và tên, chức vụ)",
+          ".."
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "PHIEU BIEU QUYET DE NGHI KY LUAT.docx",
+        "type": "PHIẾU BIỂU QUYẾT",
+        "has_header": true,
+        "has_signature": false,
+        "has_date": true,
+        "key_sections": [
+          "PHIẾU BIỂU QUYẾT",
+          "ĐẢNG BỘ ………………………….",
+          "CHI BỘ……………………….",
+          "ĐẢNG CỘNG SẢN VIỆT NAM",
+          "1. Không kỷ luật",
+          "2. Khiển trách",
+          "3. Cảnh cáo"
+        ],
+        "placeholders": [
+          "(3)",
+          "(để biểu quyết rõ việc cách chức một hay các nhiệm kỳ cụ thể)",
+          "(2)",
+          "(1)",
+          "..",
+          "(họ và tên, chức vụ)",
+          "...",
+          "(4)",
+          "(Ghi đầy đủ chức vụ từ khi vi phạm đến thời điểm hiện tại của đảng viên)",
+          "(Cách chức)"
+        ],
+        "structure_notes": []
+      },
+      {
+        "filename": "QUY TRINH THI HANH KY LUAT DANG VIEN.docx",
+        "type": "QUY TRÌNH TỔNG QUAN",
+        "has_header": false,
+        "has_signature": false,
+        "has_date": false,
+        "key_sections": [
+          "TÓM TẮT QUY TRÌNH",
+          "THI HÀNH KỶ LUẬT ĐẢNG VIÊN",
+          "I",
+          "BƯỚC CHUẨN BỊ",
+          "BƯỚC CHUẨN BỊ",
+          "BƯỚC CHUẨN BỊ",
+          "II",
+          "BƯỚC TIẾN HÀNH",
+          "BƯỚC TIẾN HÀNH",
+          "BƯỚC TIẾN HÀNH"
+        ],
+        "placeholders": [
+          "(Ban hành kèm theo Quyết định số     - QĐ/ĐU ngày                 của Đảng ủy)",
+          "(đề nghị)",
+          "(nếu tổ kiểm tra đề xuất hình thức kỷ luật thuộc thẩm quyền của chi bộ)",
+          "(tổ kiểm tra)",
+          "...",
+          "(nếu có)",
+          "(nếu cần)",
+          "(nếu tổ kiểm tra đề xuất không kỷ luật)",
+          "(nếu không thuộc thẩm quyền của chi bộ)"
+        ],
+        "structure_notes": [
+          "Có bảng"
+        ]
+      }
+    ]
+  }
+}
