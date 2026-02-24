@@ -90,3 +90,67 @@ CREATE TRIGGER set_updated_at_docs
     BEFORE UPDATE ON saved_documents
     FOR EACH ROW
     EXECUTE FUNCTION update_updated_at();
+
+-- =========================================
+-- 8. Table: user_profiles (quản lý phê duyệt tài khoản)
+-- =========================================
+CREATE TABLE IF NOT EXISTS user_profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    email TEXT NOT NULL DEFAULT '',
+    full_name TEXT DEFAULT '',
+    role TEXT NOT NULL DEFAULT 'user',        -- 'admin' | 'user'
+    approved BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Auto-create profile on sign-up
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+    INSERT INTO public.user_profiles (id, email, full_name, role, approved)
+    VALUES (
+        NEW.id,
+        NEW.email,
+        COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
+        'user',
+        FALSE
+    );
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+    AFTER INSERT ON auth.users
+    FOR EACH ROW
+    EXECUTE FUNCTION handle_new_user();
+
+-- RLS for user_profiles
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can read own profile" ON user_profiles;
+CREATE POLICY "Users can read own profile" ON user_profiles
+    FOR SELECT USING (auth.uid() = id);
+
+DROP POLICY IF EXISTS "Admins can read all profiles" ON user_profiles;
+CREATE POLICY "Admins can read all profiles" ON user_profiles
+    FOR SELECT USING (
+        EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+DROP POLICY IF EXISTS "Admins can update all profiles" ON user_profiles;
+CREATE POLICY "Admins can update all profiles" ON user_profiles
+    FOR UPDATE USING (
+        EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role = 'admin')
+    );
+
+-- Trigger updated_at
+DROP TRIGGER IF EXISTS set_updated_at_profiles ON user_profiles;
+CREATE TRIGGER set_updated_at_profiles
+    BEFORE UPDATE ON user_profiles
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at();
+
+-- ⚠️ IMPORTANT: After running this SQL, manually set the FIRST admin:
+-- UPDATE user_profiles SET role = 'admin', approved = TRUE WHERE email = 'your-admin@email.com';

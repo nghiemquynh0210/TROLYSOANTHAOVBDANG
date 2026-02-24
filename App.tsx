@@ -23,9 +23,12 @@ import PartyFeeAssistant from './components/PartyFeeAssistant';
 import CommentAssistant from './components/CommentAssistant';
 import DocumentDashboard from './components/DocumentDashboard';
 import AuthPage from './components/AuthPage';
+import PendingApproval from './components/PendingApproval';
+import AdminApproval from './components/AdminApproval';
 import { scheduleService } from './services/scheduleService';
 import { saveDocument, generateTitle } from './services/documentService';
 import { onAuthStateChange, signOut, getSession, type AuthUser } from './services/authService';
+import { getMyProfile, type UserProfile } from './services/userProfileService';
 import './styles/workflow.css';
 import {
   ShieldCheck,
@@ -80,11 +83,13 @@ import {
   LogOut
 } from 'lucide-react';
 
-type AppView = 'editor' | 'profiles' | 'dashboard' | 'compliance' | 'regulations' | 'meeting' | 'comments' | 'schedule' | 'partyfee' | 'docs';
+type AppView = 'editor' | 'profiles' | 'dashboard' | 'compliance' | 'regulations' | 'meeting' | 'comments' | 'schedule' | 'partyfee' | 'docs' | 'admin';
 
 const App: React.FC = () => {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(true);
   const [docLevel, setDocLevel] = useState<DocLevel>(DocLevel.LEVEL_2);
   const [docType, setDocType] = useState<DocType>(DocType.MONTHLY_RESOLUTION);
   const [auditTab, setAuditTab] = useState<AuditTab>(AuditTab.GIAM_SAT);
@@ -167,6 +172,24 @@ const App: React.FC = () => {
       setAuthLoading(false);
     }
   }, []);
+
+  // Load user profile for approval check
+  useEffect(() => {
+    if (authUser) {
+      setProfileLoading(true);
+      getMyProfile().then(p => {
+        setUserProfile(p);
+        setProfileLoading(false);
+      }).catch(() => setProfileLoading(false));
+    } else {
+      setUserProfile(null);
+      setProfileLoading(false);
+    }
+  }, [authUser]);
+
+  const refreshProfile = () => {
+    getMyProfile().then(p => setUserProfile(p));
+  };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -372,19 +395,21 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
   }, [activeView]);
 
   return (
-    authLoading ? (
+    authLoading || profileLoading ? (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-red-950 to-slate-900">
         <div className="text-white/50 text-sm font-bold animate-pulse">Đang tải...</div>
       </div>
     ) : !authUser ? (
       <AuthPage onAuthSuccess={() => { }} />
+    ) : userProfile && !userProfile.approved ? (
+      <PendingApproval email={authUser.email || ''} onRefresh={refreshProfile} />
     ) : (
       <div className="min-h-screen flex flex-col bg-[#f5f7fa]">
         <header className={`${{
           editor: currentStyle.color, profiles: 'bg-blue-800', dashboard: 'bg-emerald-800',
           compliance: 'bg-slate-800', regulations: 'bg-purple-800', meeting: 'bg-rose-800',
           comments: 'bg-indigo-800', schedule: 'bg-teal-800',
-          partyfee: 'bg-amber-800', docs: 'bg-cyan-800'
+          partyfee: 'bg-amber-800', docs: 'bg-cyan-800', admin: 'bg-violet-800'
         }[activeView]} text-white px-6 py-4 shadow-xl flex items-center justify-between border-b-4 border-yellow-500 sticky top-0 z-40 transition-all duration-500`}>
           <div className="flex items-center gap-4">
             <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-md shadow-inner">
@@ -395,7 +420,8 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
                 comments: <MessageSquareText className="w-5 h-5" />,
                 schedule: <CalendarDays className="w-5 h-5" />,
                 partyfee: <Wallet className="w-5 h-5" />,
-                docs: <Files className="w-5 h-5" />
+                docs: <Files className="w-5 h-5" />,
+                admin: <Users className="w-5 h-5" />
               }[activeView]}
             </div>
             <div>
@@ -409,7 +435,8 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
                   meeting: 'Trợ lý biên bản cuộc họp', comments: 'Trợ lý gợi ý nhận xét chuẩn văn phong Đảng',
                   schedule: 'Nhắc lịch sinh hoạt',
                   partyfee: 'Trợ lý đảng phí — QĐ 01-QĐ/TW',
-                  docs: 'Kho văn bản đã soạn thảo'
+                  docs: 'Kho văn bản đã soạn thảo',
+                  admin: 'Quản lý & Phê duyệt tài khoản'
                 }[activeView]}
               </p>
             </div>
@@ -429,6 +456,7 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
                 { key: 'schedule' as AppView, icon: <CalendarDays className="w-3.5 h-3.5" />, label: 'Lịch' },
                 { key: 'partyfee' as AppView, icon: <Wallet className="w-3.5 h-3.5" />, label: 'Đảng phí' },
                 { key: 'docs' as AppView, icon: <Files className="w-3.5 h-3.5" />, label: 'Văn bản' },
+                ...(userProfile?.role === 'admin' ? [{ key: 'admin' as AppView, icon: <Users className="w-3.5 h-3.5" />, label: 'Phê duyệt' }] : []),
               ]).map(tab => (
                 <button
                   key={tab.key}
@@ -470,6 +498,7 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
           {activeView === 'comments' && <CommentAssistant onInsertToEditor={handleSendToEditor} />}
           {activeView === 'schedule' && <ScheduleReminder />}
           {activeView === 'partyfee' && <PartyFeeAssistant />}
+          {activeView === 'admin' && <AdminApproval onBack={() => setActiveView('editor')} />}
           {activeView === 'docs' && <DocumentDashboard onOpenInEditor={(content, docType) => {
             setGeneratedDoc(content);
             setActiveView('editor');
