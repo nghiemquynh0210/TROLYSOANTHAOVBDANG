@@ -401,7 +401,7 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
       </div>
     ) : !authUser ? (
       <AuthPage onAuthSuccess={() => { }} />
-    ) : userProfile && !userProfile.approved ? (
+    ) : !userProfile?.approved ? (
       <PendingApproval email={authUser.email || ''} onRefresh={refreshProfile} />
     ) : (
       <div className="min-h-screen flex flex-col bg-[#f5f7fa]">

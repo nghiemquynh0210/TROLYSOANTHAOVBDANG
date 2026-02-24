@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import {
     Users, ShieldCheck, ShieldX, UserCheck, UserX,
-    Crown, Loader2, RefreshCw, Search, ArrowLeft
+    Crown, Loader2, RefreshCw, Search, ArrowLeft, Trash2
 } from 'lucide-react';
-import { getAllProfiles, approveUser, rejectUser, setUserRole, type UserProfile } from '../services/userProfileService';
+import { getAllProfiles, approveUser, rejectUser, setUserRole, deleteUserProfile, type UserProfile } from '../services/userProfileService';
 
 interface Props {
     onBack: () => void;
@@ -45,6 +45,14 @@ const AdminApproval: React.FC<Props> = ({ onBack }) => {
         if (newRole === 'admin' && !confirm('Cấp quyền Admin cho tài khoản này?')) return;
         setActionLoading(userId);
         await setUserRole(userId, newRole);
+        await loadProfiles();
+        setActionLoading(null);
+    };
+
+    const handleDelete = async (userId: string) => {
+        if (!confirm('Xóa tài khoản này? Hành động không thể hoàn tác!')) return;
+        setActionLoading(userId);
+        await deleteUserProfile(userId);
         await loadProfiles();
         setActionLoading(null);
     };
@@ -102,8 +110,8 @@ const AdminApproval: React.FC<Props> = ({ onBack }) => {
                             key={f.key}
                             onClick={() => setFilter(f.key)}
                             className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${filter === f.key
-                                    ? 'bg-white shadow text-gray-800'
-                                    : 'text-gray-500 hover:text-gray-700'
+                                ? 'bg-white shadow text-gray-800'
+                                : 'text-gray-500 hover:text-gray-700'
                                 }`}
                         >
                             {f.label}
@@ -153,8 +161,8 @@ const AdminApproval: React.FC<Props> = ({ onBack }) => {
                                     </td>
                                     <td className="px-4 py-3 text-center">
                                         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${profile.role === 'admin'
-                                                ? 'bg-purple-100 text-purple-700'
-                                                : 'bg-gray-100 text-gray-600'
+                                            ? 'bg-purple-100 text-purple-700'
+                                            : 'bg-gray-100 text-gray-600'
                                             }`}>
                                             {profile.role === 'admin' && <Crown className="w-3 h-3" />}
                                             {profile.role === 'admin' ? 'Admin' : 'User'}
@@ -205,6 +213,13 @@ const AdminApproval: React.FC<Props> = ({ onBack }) => {
                                                         title={profile.role === 'admin' ? 'Hạ quyền' : 'Nâng Admin'}
                                                     >
                                                         <Crown className="w-4 h-4" />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDelete(profile.id)}
+                                                        className="p-1.5 bg-gray-50 hover:bg-red-100 text-gray-400 hover:text-red-600 rounded-lg transition-all"
+                                                        title="Xóa tài khoản"
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
                                                     </button>
                                                 </>
                                             )}

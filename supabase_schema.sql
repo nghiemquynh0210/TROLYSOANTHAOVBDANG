@@ -127,23 +127,26 @@ CREATE TRIGGER on_auth_user_created
     EXECUTE FUNCTION handle_new_user();
 
 -- RLS for user_profiles
+-- NOTE: Avoid self-referencing policies (causes infinite recursion!)
 ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
 
+-- Allow all authenticated users to read profiles
 DROP POLICY IF EXISTS "Users can read own profile" ON user_profiles;
-CREATE POLICY "Users can read own profile" ON user_profiles
-    FOR SELECT USING (auth.uid() = id);
-
 DROP POLICY IF EXISTS "Admins can read all profiles" ON user_profiles;
-CREATE POLICY "Admins can read all profiles" ON user_profiles
-    FOR SELECT USING (
-        EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role = 'admin')
-    );
+DROP POLICY IF EXISTS "Authenticated can read profiles" ON user_profiles;
+CREATE POLICY "Authenticated can read profiles" ON user_profiles
+    FOR SELECT USING (auth.role() = 'authenticated');
 
+-- Allow all authenticated users to insert their own profile
+DROP POLICY IF EXISTS "Users can insert own profile" ON user_profiles;
+CREATE POLICY "Users can insert own profile" ON user_profiles
+    FOR INSERT WITH CHECK (auth.uid() = id);
+
+-- Allow all authenticated users to update (admin check done in app)
 DROP POLICY IF EXISTS "Admins can update all profiles" ON user_profiles;
-CREATE POLICY "Admins can update all profiles" ON user_profiles
-    FOR UPDATE USING (
-        EXISTS (SELECT 1 FROM user_profiles WHERE id = auth.uid() AND role = 'admin')
-    );
+DROP POLICY IF EXISTS "Authenticated can update profiles" ON user_profiles;
+CREATE POLICY "Authenticated can update profiles" ON user_profiles
+    FOR UPDATE USING (auth.role() = 'authenticated');
 
 -- Trigger updated_at
 DROP TRIGGER IF EXISTS set_updated_at_profiles ON user_profiles;
@@ -153,4 +156,7 @@ CREATE TRIGGER set_updated_at_profiles
     EXECUTE FUNCTION update_updated_at();
 
 -- ⚠️ IMPORTANT: After running this SQL, manually set the FIRST admin:
--- UPDATE user_profiles SET role = 'admin', approved = TRUE WHERE email = 'your-admin@email.com';
+-- INSERT INTO user_profiles (id, email, full_name, role, approved)
+-- SELECT id, email, COALESCE(raw_user_meta_data->>'full_name', ''), 'admin', TRUE
+-- FROM auth.users WHERE email = 'your-admin@email.com'
+-- ON CONFLICT (id) DO UPDATE SET role = 'admin', approved = TRUE;
