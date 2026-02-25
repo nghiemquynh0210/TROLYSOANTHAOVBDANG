@@ -2,21 +2,24 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
     MEMBER_TYPES, MINIMUM_WAGES, calculatePartyFee, calculateRetention,
-    MemberType, RETENTION_RATES, BANK_CONFIG, getVietQRUrl
+    MemberType, RETENTION_RATES, BANK_CONFIG, getVietQRUrl,
+    getMinimumWages, setMinimumWages, DEFAULT_MINIMUM_WAGES
 } from '../data/partyFee';
 import {
     Calculator, Wallet, Info, AlertTriangle, ChevronUp,
     Users, CheckCircle2, HelpCircle, FileText, ClipboardPaste,
     Trash2, Download, Plus, UserPlus, X, Printer, Table2,
     Copy, ClipboardCheck, BarChart3, Shield, Clock, Target, FileSpreadsheet,
-    QrCode, Share2
+    QrCode, Share2, Settings
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
     fetchMembers as fetchDbMembers, syncAllMembers,
     upsertMember, deleteMember as deleteDbMember,
-    recordPayment, dbToAppMember, appToDbMember
+    recordPayment, fetchPayments, dbToAppMember, appToDbMember
 } from '../services/paymentService';
+import { Search } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 // ─── Types ───────────────────────────────────────────
 interface PartyMember {
@@ -126,6 +129,100 @@ const PartyFeeAssistant: React.FC = () => {
     const [defaultRegion, setDefaultRegion] = useState('Vùng I');
     const [qrMember, setQrMember] = useState<PartyMember | null>(null);
     const [defaultType, setDefaultType] = useState<MemberType>('bhxh');
+
+    // Monthly payment tracking state
+    const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
+    const [selectedYear, setSelectedYear] = useState(now.getFullYear());
+    const [searchTerm, setSearchTerm] = useState('');
+    const [monthlyPaidMap, setMonthlyPaidMap] = useState<Record<string, boolean>>({});
+    const [paymentsLoading, setPaymentsLoading] = useState(false);
+
+    // Editable minimum wage state
+    const [showWageSettings, setShowWageSettings] = useState(false);
+    const [editWages, setEditWages] = useState<Record<string, number>>(getMinimumWages);
+    const [wagesSaved, setWagesSaved] = useState(false);
+
+    // Custom confirm modal state
+    const [confirmState, setConfirmState] = useState<{
+        open: boolean;
+        title: string;
+        message: string;
+        type: 'warning' | 'success' | 'info';
+    }>({ open: false, title: '', message: '', type: 'warning' });
+    const confirmResolveRef = React.useRef<((v: boolean) => void) | null>(null);
+
+    const showConfirm = useCallback((message: string, title = 'Xác nhận', type: 'warning' | 'success' | 'info' = 'warning'): Promise<boolean> => {
+        return new Promise(resolve => {
+            confirmResolveRef.current = resolve;
+            setConfirmState({ open: true, title, message, type });
+        });
+    }, []);
+
+    const handleConfirmResult = useCallback((result: boolean) => {
+        confirmResolveRef.current?.(result);
+        confirmResolveRef.current = null;
+        setConfirmState(prev => ({ ...prev, open: false }));
+    }, []);
+
+    // Load payment data for selected month/year
+    useEffect(() => {
+        const loadPayments = async () => {
+            setPaymentsLoading(true);
+            try {
+                const payments = await fetchPayments(selectedMonth, selectedYear);
+                const paidMap: Record<string, boolean> = {};
+                payments.forEach(p => {
+                    if (p.paid) paidMap[p.member_id] = true;
+                });
+                setMonthlyPaidMap(paidMap);
+            } catch {
+                console.warn('Failed to load payments');
+            }
+            setPaymentsLoading(false);
+        };
+        loadPayments();
+    }, [selectedMonth, selectedYear]);
+
+    // Toggle paid status for a member in selected month
+    const toggleMonthlyPaid = useCallback(async (memberId: string, memberName: string, currentlyPaid: boolean) => {
+        const action = currentlyPaid
+            ? `Chuyển "${memberName}" về CHƯA NỘP tháng ${String(selectedMonth).padStart(2, '0')}/${selectedYear}?`
+            : `Xác nhận "${memberName}" ĐÃ NỘP đảng phí tháng ${String(selectedMonth).padStart(2, '0')}/${selectedYear}?`;
+        const confirmed = await showConfirm(action, currentlyPaid ? 'Thu hồi' : 'Xác nhận thanh toán', currentlyPaid ? 'warning' : 'success');
+        if (!confirmed) return;
+        if (currentlyPaid) {
+            // Mark as unpaid: remove payment record
+            const { supabase } = await import('../services/supabaseClient');
+            await supabase.from('party_payments').delete()
+                .eq('member_id', memberId)
+                .eq('month', selectedMonth)
+                .eq('year', selectedYear);
+            setMonthlyPaidMap(prev => ({ ...prev, [memberId]: false }));
+        } else {
+            // Mark as paid: create payment record
+            const member = members.find(m => m.id === memberId);
+            await recordPayment({
+                member_id: memberId,
+                amount: member?.feeAmount || 0,
+                month: selectedMonth,
+                year: selectedYear,
+                paid: true,
+                payment_method: 'manual',
+                note: `Đảng phí T${String(selectedMonth).padStart(2, '0')}/${selectedYear}`
+            });
+            setMonthlyPaidMap(prev => ({ ...prev, [memberId]: true }));
+        }
+    }, [selectedMonth, selectedYear, members, showConfirm]);
+
+    // Filter members by search term
+    const filteredMembers = useMemo(() => {
+        if (!searchTerm.trim()) return members;
+        const q = searchTerm.toLowerCase().trim();
+        return members.filter(m =>
+            m.hoTen.toLowerCase().includes(q) ||
+            m.chucVu.toLowerCase().includes(q)
+        );
+    }, [members, searchTerm]);
 
     // ─── Calculator logic ────────────────────
     const typeInfo = useMemo(() =>
@@ -587,36 +684,168 @@ const PartyFeeAssistant: React.FC = () => {
                 <>
                     {/* Toolbar */}
                     <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-                        <div className="bg-gray-50/80 px-6 py-4 border-b border-gray-200 flex items-center justify-between flex-wrap gap-3">
-                            <div className="flex items-center gap-2">
-                                <Users className="w-4 h-4 text-gray-500" />
-                                <h3 className="text-xs font-black uppercase text-gray-600 tracking-widest">
-                                    Danh sách đảng viên ({members.length} người)
-                                </h3>
+                        <div className="bg-gray-50/80 px-6 py-4 border-b border-gray-200 space-y-3">
+                            <div className="flex items-center justify-between flex-wrap gap-3">
+                                <div className="flex items-center gap-2">
+                                    <Users className="w-4 h-4 text-gray-500" />
+                                    <h3 className="text-xs font-black uppercase text-gray-600 tracking-widest">
+                                        Danh sách đảng viên ({members.length} người)
+                                    </h3>
+                                </div>
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <button onClick={() => setShowPasteArea(!showPasteArea)}
+                                        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
+                                        <ClipboardPaste className="w-3.5 h-3.5" /> Dán từ Excel
+                                    </button>
+                                    <button onClick={handleAddOne}
+                                        className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
+                                        <UserPlus className="w-3.5 h-3.5" /> Thêm 1 ĐV
+                                    </button>
+                                    {members.length > 0 && (
+                                        <>
+                                            <button onClick={exportCSV}
+                                                className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
+                                                <Download className="w-3.5 h-3.5" /> Xuất CSV
+                                            </button>
+                                            <button onClick={clearAll}
+                                                className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-600 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all border border-red-200">
+                                                <Trash2 className="w-3.5 h-3.5" /> Xóa tất cả
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
                             </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                                <button onClick={() => setShowPasteArea(!showPasteArea)}
-                                    className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
-                                    <ClipboardPaste className="w-3.5 h-3.5" /> Dán từ Excel
+
+                            {/* Month/Year Selector + Search */}
+                            <div className="flex items-center gap-3 flex-wrap">
+                                {/* Month dropdown */}
+                                <div className="flex items-center gap-1.5">
+                                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Tháng:</label>
+                                    <select
+                                        value={selectedMonth}
+                                        onChange={e => setSelectedMonth(Number(e.target.value))}
+                                        className="bg-white border-2 border-amber-200 rounded-lg text-xs font-bold text-amber-700 px-2 py-1.5 outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 cursor-pointer"
+                                    >
+                                        {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
+                                            <option key={m} value={m}>Tháng {String(m).padStart(2, '0')}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {/* Year dropdown */}
+                                <div className="flex items-center gap-1.5">
+                                    <label className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Năm:</label>
+                                    <select
+                                        value={selectedYear}
+                                        onChange={e => setSelectedYear(Number(e.target.value))}
+                                        className="bg-white border-2 border-amber-200 rounded-lg text-xs font-bold text-amber-700 px-2 py-1.5 outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 cursor-pointer"
+                                    >
+                                        {[2026, 2027, 2028, 2029, 2030, 2031].map(y => (
+                                            <option key={y} value={y}>{y}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                                {/* Payment summary for month */}
+                                <div className="flex items-center gap-1.5 ml-auto">
+                                    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold ${Object.values(monthlyPaidMap).filter(Boolean).length === members.filter(m => m.feeAmount > 0).length && members.length > 0
+                                        ? 'bg-green-100 text-green-700'
+                                        : 'bg-orange-100 text-orange-600'
+                                        }`}>
+                                        <CheckCircle2 className="w-3 h-3" />
+                                        {paymentsLoading ? '...' : `${Object.values(monthlyPaidMap).filter(Boolean).length}/${members.filter(m => m.feeAmount > 0).length}`} đã nộp T{String(selectedMonth).padStart(2, '0')}
+                                    </span>
+                                </div>
+                            </div>
+
+                            {/* Search bar + Settings button */}
+                            <div className="flex items-center gap-2">
+                                <div className="relative flex-1">
+                                    <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                                    <input
+                                        type="text"
+                                        value={searchTerm}
+                                        onChange={e => setSearchTerm(e.target.value)}
+                                        placeholder="Tìm kiếm đảng viên theo tên, chức vụ..."
+                                        className="w-full pl-9 pr-3 py-2 bg-white border-2 border-gray-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 transition-all"
+                                    />
+                                </div>
+                                <button
+                                    onClick={() => setShowWageSettings(!showWageSettings)}
+                                    className={`p-2 rounded-xl border-2 transition-all ${showWageSettings
+                                        ? 'bg-amber-100 border-amber-300 text-amber-700'
+                                        : 'bg-white border-gray-200 text-gray-400 hover:text-amber-600 hover:border-amber-200'
+                                        }`}
+                                    title="Cài đặt lương tối thiểu vùng"
+                                >
+                                    <Settings className="w-4 h-4" />
                                 </button>
-                                <button onClick={handleAddOne}
-                                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
-                                    <UserPlus className="w-3.5 h-3.5" /> Thêm 1 ĐV
-                                </button>
-                                {members.length > 0 && (
-                                    <>
-                                        <button onClick={exportCSV}
-                                            className="px-3 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
-                                            <Download className="w-3.5 h-3.5" /> Xuất CSV
-                                        </button>
-                                        <button onClick={clearAll}
-                                            className="px-3 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-600 rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all border border-red-200">
-                                            <Trash2 className="w-3.5 h-3.5" /> Xóa tất cả
-                                        </button>
-                                    </>
-                                )}
                             </div>
                         </div>
+
+                        {/* Wage Settings Panel */}
+                        {showWageSettings && (
+                            <div className="px-6 py-4 border-b border-gray-200 bg-amber-50/50 space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h4 className="text-[10px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Settings className="w-3.5 h-3.5" /> Cài đặt lương tối thiểu vùng
+                                    </h4>
+                                    <button onClick={() => setShowWageSettings(false)} className="text-gray-400 hover:text-gray-600">
+                                        <X className="w-4 h-4" />
+                                    </button>
+                                </div>
+
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                    {Object.keys(DEFAULT_MINIMUM_WAGES).map(region => (
+                                        <div key={region}>
+                                            <label className="text-[9px] font-bold text-gray-500 uppercase block mb-1">{region}</label>
+                                            <input
+                                                type="number"
+                                                defaultValue={editWages[region]}
+                                                key={`wage-${region}-${editWages[region]}`}
+                                                onBlur={e => {
+                                                    const val = parseFloat(e.target.value) || 0;
+                                                    setEditWages(prev => ({ ...prev, [region]: val }));
+                                                }}
+                                                className="w-full p-2 bg-white border-2 border-amber-200 rounded-lg text-xs font-bold text-amber-700 outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 text-right"
+                                            />
+                                            <p className="text-[8px] text-gray-400 mt-0.5 text-right">
+                                                Mặc định: {DEFAULT_MINIMUM_WAGES[region].toLocaleString('vi-VN')}đ
+                                            </p>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div className="flex items-center gap-2 pt-1">
+                                    <button
+                                        onClick={() => {
+                                            setMinimumWages(editWages);
+                                            setWagesSaved(true);
+                                            setTimeout(() => setWagesSaved(false), 2000);
+                                            // Force re-render members to recalculate fees
+                                            setMembers(prev => prev.map(m => {
+                                                const fee = calculatePartyFee(m.memberType, { salary: m.salary });
+                                                return { ...m, feeAmount: fee.amount };
+                                            }));
+                                        }}
+                                        className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm"
+                                    >
+                                        <CheckCircle2 className="w-3.5 h-3.5" /> {wagesSaved ? 'Đã lưu ✔' : 'Lưu thay đổi'}
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setEditWages({ ...DEFAULT_MINIMUM_WAGES });
+                                            setMinimumWages({ ...DEFAULT_MINIMUM_WAGES });
+                                            setMembers(prev => prev.map(m => {
+                                                const fee = calculatePartyFee(m.memberType, { salary: m.salary });
+                                                return { ...m, feeAmount: fee.amount };
+                                            }));
+                                        }}
+                                        className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all"
+                                    >
+                                        Khôi phục mặc định
+                                    </button>
+                                </div>
+                            </div>
+                        )}
 
                         {/* Paste area */}
                         {showPasteArea && (
@@ -692,6 +921,11 @@ const PartyFeeAssistant: React.FC = () => {
                         {/* Member table */}
                         {members.length > 0 ? (
                             <div className="overflow-x-auto">
+                                {searchTerm && (
+                                    <div className="px-4 py-2 bg-amber-50 text-xs text-amber-700 font-medium border-b border-amber-200">
+                                        Tìm thấy {filteredMembers.length}/{members.length} đảng viên cho "{searchTerm}"
+                                    </div>
+                                )}
                                 <table className="w-full text-xs">
                                     <thead>
                                         <tr className="bg-gray-50 border-b border-gray-200">
@@ -707,108 +941,136 @@ const PartyFeeAssistant: React.FC = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-100">
-                                        {members.map(m => (
-                                            <tr key={m.id} className="hover:bg-amber-50/30 transition-colors">
-                                                <td className="p-3 text-gray-400 font-mono">{m.stt}</td>
-                                                <td className="p-3">
-                                                    <input
-                                                        value={m.hoTen}
-                                                        onChange={e => updateMember(m.id, { hoTen: e.target.value })}
-                                                        placeholder="Nhập họ tên"
-                                                        className="w-full bg-transparent border-0 outline-none text-xs font-medium text-gray-800 placeholder:text-gray-300 focus:bg-amber-50 focus:px-2 rounded transition-all"
-                                                    />
-                                                </td>
-                                                <td className="p-3">
-                                                    <input
-                                                        value={m.chucVu}
-                                                        onChange={e => updateMember(m.id, { chucVu: e.target.value })}
-                                                        placeholder="Chức vụ"
-                                                        className="w-full bg-transparent border-0 outline-none text-xs text-gray-600 placeholder:text-gray-300 focus:bg-amber-50 focus:px-2 rounded transition-all"
-                                                    />
-                                                </td>
-                                                <td className="p-3">
-                                                    <select
-                                                        value={m.memberType}
-                                                        onChange={e => updateMember(m.id, { memberType: e.target.value as MemberType })}
-                                                        className="w-full bg-transparent border border-gray-200 rounded-lg text-[11px] p-1.5 outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 cursor-pointer"
-                                                    >
-                                                        {MEMBER_TYPES.map(t => (
-                                                            <option key={t.key} value={t.key}>{t.label}</option>
-                                                        ))}
-                                                    </select>
-                                                </td>
-                                                <td className="p-3 text-center">
-                                                    <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${m.memberType === 'mien'
-                                                        ? 'bg-green-100 text-green-700'
-                                                        : 'bg-amber-100 text-amber-700'
-                                                        }`}>
-                                                        {getRateLabel(m.memberType)}
-                                                    </span>
-                                                </td>
-                                                <td className="p-3">
-                                                    {m.memberType !== 'mien' && m.memberType !== 'hoc_sinh_sv' && (
+                                        {filteredMembers.map(m => {
+                                            const isPaidThisMonth = !!monthlyPaidMap[m.id];
+                                            return (
+                                                <tr key={m.id} className={`hover:bg-amber-50/30 transition-colors ${isPaidThisMonth ? 'bg-green-50/30' : ''}`}>
+                                                    <td className="p-3 text-gray-400 font-mono">{m.stt}</td>
+                                                    <td className="p-3">
                                                         <input
-                                                            type="number"
-                                                            value={m.salary || ''}
-                                                            onChange={e => updateMember(m.id, { salary: parseFloat(e.target.value) || 0 })}
-                                                            placeholder="0"
-                                                            className="w-full bg-transparent border border-gray-200 rounded-lg text-xs p-1.5 text-right outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
+                                                            value={m.hoTen}
+                                                            onChange={e => updateMember(m.id, { hoTen: e.target.value })}
+                                                            placeholder="Nhập họ tên"
+                                                            className="w-full bg-transparent border-0 outline-none text-xs font-medium text-gray-800 placeholder:text-gray-300 focus:bg-amber-50 focus:px-2 rounded transition-all"
                                                         />
-                                                    )}
-                                                    {m.memberType === 'hoc_sinh_sv' && (
-                                                        <span className="text-[10px] text-gray-400 italic">Cố định</span>
-                                                    )}
-                                                    {m.memberType === 'mien' && (
-                                                        <span className="text-[10px] text-green-500 italic">Miễn đóng</span>
-                                                    )}
-                                                </td>
-                                                <td className="p-3 text-right">
-                                                    <span className={`font-bold ${m.feeAmount === 0 ? 'text-green-600' : 'text-amber-700'}`}>
-                                                        {formatCurrency(m.feeAmount)}
-                                                    </span>
-                                                </td>
-                                                <td className="p-3 text-center">
-                                                    <button
-                                                        onClick={() => updateMember(m.id, { paid: !m.paid })}
-                                                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer ${m.paid
-                                                            ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                                                            : 'bg-red-50 text-red-400 hover:bg-red-100'
-                                                            }`}
-                                                    >
-                                                        {m.paid ? <><CheckCircle2 className="w-3 h-3" /> Đã nộp</> : <><Clock className="w-3 h-3" /> Chưa nộp</>}
-                                                    </button>
-                                                </td>
-                                                <td className="p-3">
-                                                    <div className="flex items-center gap-1">
-                                                        <button onClick={() => setQrMember(m)}
-                                                            title="Tạo mã QR thanh toán"
-                                                            className="text-blue-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50">
-                                                            <QrCode className="w-3.5 h-3.5" />
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <input
+                                                            value={m.chucVu}
+                                                            onChange={e => updateMember(m.id, { chucVu: e.target.value })}
+                                                            placeholder="Chức vụ"
+                                                            className="w-full bg-transparent border-0 outline-none text-xs text-gray-600 placeholder:text-gray-300 focus:bg-amber-50 focus:px-2 rounded transition-all"
+                                                        />
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <select
+                                                            value={m.memberType}
+                                                            onChange={async e => {
+                                                                const newType = e.target.value as MemberType;
+                                                                const newLabel = MEMBER_TYPES.find(t => t.key === newType)?.label || newType;
+                                                                const ok = await showConfirm(
+                                                                    `Đổi đối tượng của "${m.hoTen || 'ĐV'}" sang "${newLabel}"?`,
+                                                                    'Thay đổi đối tượng'
+                                                                );
+                                                                if (!ok) {
+                                                                    e.target.value = m.memberType; return;
+                                                                }
+                                                                updateMember(m.id, { memberType: newType });
+                                                            }}
+                                                            className="w-full bg-transparent border border-gray-200 rounded-lg text-[11px] p-1.5 outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400 cursor-pointer"
+                                                        >
+                                                            {MEMBER_TYPES.map(t => (
+                                                                <option key={t.key} value={t.key}>{t.label}</option>
+                                                            ))}
+                                                        </select>
+                                                    </td>
+                                                    <td className="p-3 text-center">
+                                                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-bold ${m.memberType === 'mien'
+                                                            ? 'bg-green-100 text-green-700'
+                                                            : 'bg-amber-100 text-amber-700'
+                                                            }`}>
+                                                            {getRateLabel(m.memberType)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3">
+                                                        {m.memberType !== 'mien' && m.memberType !== 'hoc_sinh_sv' && (
+                                                            <input
+                                                                key={`salary-${m.id}-${m.salary}`}
+                                                                type="number"
+                                                                defaultValue={m.salary || ''}
+                                                                onBlur={async e => {
+                                                                    const newSalary = parseFloat(e.target.value) || 0;
+                                                                    if (newSalary !== m.salary && newSalary > 0) {
+                                                                        const ok = await showConfirm(
+                                                                            `Cập nhật lương/trợ cấp của "${m.hoTen || 'ĐV'}" thành ${newSalary.toLocaleString('vi-VN')}đ?`,
+                                                                            'Cập nhật lương'
+                                                                        );
+                                                                        if (!ok) {
+                                                                            e.target.value = String(m.salary || ''); return;
+                                                                        }
+                                                                        updateMember(m.id, { salary: newSalary });
+                                                                    }
+                                                                }}
+                                                                placeholder="0"
+                                                                className="w-full bg-transparent border border-gray-200 rounded-lg text-xs p-1.5 text-right outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
+                                                            />
+                                                        )}
+                                                        {m.memberType === 'hoc_sinh_sv' && (
+                                                            <span className="text-[10px] text-gray-400 italic">Cố định</span>
+                                                        )}
+                                                        {m.memberType === 'mien' && (
+                                                            <span className="text-[10px] text-green-500 italic">Miễn đóng</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-3 text-right">
+                                                        <span className={`font-bold ${m.feeAmount === 0 ? 'text-green-600' : 'text-amber-700'}`}>
+                                                            {formatCurrency(m.feeAmount)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="p-3 text-center">
+                                                        <button
+                                                            onClick={() => toggleMonthlyPaid(m.id, m.hoTen, isPaidThisMonth)}
+                                                            disabled={paymentsLoading}
+                                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold transition-all cursor-pointer ${isPaidThisMonth
+                                                                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                                                : 'bg-red-50 text-red-400 hover:bg-red-100'
+                                                                }`}
+                                                        >
+                                                            {isPaidThisMonth ? <><CheckCircle2 className="w-3 h-3" /> Đã nộp</> : <><Clock className="w-3 h-3" /> Chưa nộp</>}
                                                         </button>
-                                                        <button onClick={() => removeMember(m.id)}
-                                                            className="text-gray-300 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50">
-                                                            <X className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
+                                                    </td>
+                                                    <td className="p-3">
+                                                        <div className="flex items-center gap-1">
+                                                            <button onClick={() => setQrMember(m)}
+                                                                title="Tạo mã QR thanh toán"
+                                                                className="text-blue-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50">
+                                                                <QrCode className="w-3.5 h-3.5" />
+                                                            </button>
+                                                            <button onClick={() => removeMember(m.id)}
+                                                                className="text-gray-300 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50">
+                                                                <X className="w-3.5 h-3.5" />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
                                     </tbody>
                                     {/* Total row */}
                                     <tfoot>
                                         <tr className="bg-amber-50 border-t-2 border-amber-200 font-bold">
                                             <td colSpan={6} className="p-3 text-right text-xs text-amber-800 uppercase tracking-wider">
-                                                Tổng cộng ({members.length} đảng viên):
+                                                Tổng cộng ({filteredMembers.length} đảng viên) — T{String(selectedMonth).padStart(2, '0')}/{selectedYear}:
                                             </td>
                                             <td className="p-3 text-right text-amber-800 text-sm font-black">
-                                                {formatCurrency(memberSummary.total)}
+                                                {formatCurrency(filteredMembers.reduce((s, m) => s + m.feeAmount, 0))}
                                             </td>
                                             <td className="p-3 text-center">
-                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${members.filter(m => m.paid).length === members.length && members.length > 0
+                                                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${filteredMembers.filter(m => monthlyPaidMap[m.id]).length === filteredMembers.filter(m => m.feeAmount > 0).length && filteredMembers.length > 0
                                                     ? 'bg-green-100 text-green-700'
                                                     : 'bg-orange-100 text-orange-600'
                                                     }`}>
-                                                    {members.filter(m => m.paid).length}/{members.length}
+                                                    {filteredMembers.filter(m => monthlyPaidMap[m.id]).length}/{filteredMembers.filter(m => m.feeAmount > 0).length}
                                                 </span>
                                             </td>
                                             <td></td>
@@ -1483,6 +1745,16 @@ const PartyFeeAssistant: React.FC = () => {
                     </div>
                 </div>
             )}
+
+            {/* Custom Confirm Modal */}
+            <ConfirmModal
+                open={confirmState.open}
+                title={confirmState.title}
+                message={confirmState.message}
+                type={confirmState.type}
+                onConfirm={() => handleConfirmResult(true)}
+                onCancel={() => handleConfirmResult(false)}
+            />
         </div>
     );
 };

@@ -44,7 +44,8 @@ export interface DocMetadata {
 export const generateDraftContent = async (
   type: string,
   rawContent: string,
-  metadata: DocMetadata
+  metadata: DocMetadata,
+  templateContent?: string
 ): Promise<string> => {
   // Get API key from localStorage
   const apiKey = localStorage.getItem('gemini_api_key');
@@ -141,7 +142,12 @@ THÔNG TIN ĐẢNG VIÊN / QUẦN CHÚNG (ĐIỀN VÀO MẪU):
   }
 
   const prompt = `
-SOẠN THẢO VĂN BẢN ĐẢNG: ${type}
+⚠️ NHIỆM VỤ MỚI — ĐỘC LẬP HOÀN TOÀN ⚠️
+Đây là một nhiệm vụ soạn thảo MỚI, KHÔNG liên quan đến bất kỳ văn bản nào trước đó.
+Bạn PHẢI tập trung 100% vào loại văn bản được chỉ định dưới đây.
+TUYỆT ĐỐI KHÔNG mang nội dung, cấu trúc, hoặc ngữ cảnh từ nhiệm vụ khác sang.
+
+LOẠI VĂN BẢN CẦN SOẠN: ${type}
 
 CƠ QUAN BAN HÀNH:
 Đảng bộ: ${metadata.superiorParty}
@@ -152,6 +158,17 @@ ${meetingInfoBlock}
 ${memberInfoBlock}
 ${admissionGuideline}
 ${ktgsTemplateBlock}
+${templateContent ? `
+⚠️ MẪU KHUNG SƯỜN DO NGƯỜI DÙNG CUNG CẤP ⚠️
+Người dùng đã upload file mẫu. Hãy soạn văn bản THEO ĐÚNG cấu trúc, bố cục, tiêu đề mục, cách đánh số của mẫu này.
+GIỮ NGUYÊN 100% khung sườn — CHỈ THAY ĐỔI/BỔ SUNG nội dung chi tiết.
+Nếu mẫu có chỗ trống (dấu ..., gạch dưới, [nội dung]) thì điền nội dung phù hợp.
+Nếu có mẫu người dùng thì ƯU TIÊN mẫu này hơn mẫu mặc định của hệ thống.
+
+--- BẮT ĐẦU MẪU NGƯỜI DÙNG ---
+${templateContent}
+--- KẾT THÚC MẪU NGƯỜI DÙNG ---
+` : ''}
 
 NỘI DUNG NGƯỜI DÙNG CUNG CẤP (DỮ LIỆU THÔ):
 ${rawContent}

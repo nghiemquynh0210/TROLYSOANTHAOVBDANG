@@ -6,13 +6,31 @@
  * Thay thế Quyết định 342-QĐ/TW ngày 28/12/2010
  */
 
-// Lương tối thiểu vùng 2026 (Nghị định 74/2024/NĐ-CP)
-export const MINIMUM_WAGES: Record<string, number> = {
-    'Vùng I': 4960000,
-    'Vùng II': 4410000,
-    'Vùng III': 3860000,
-    'Vùng IV': 3450000
+// Lương tối thiểu vùng 2026 (Nghị định 293/2025/NĐ-CP, hiệu lực 01/01/2026)
+export const DEFAULT_MINIMUM_WAGES: Record<string, number> = {
+    'Vùng I': 5310000,
+    'Vùng II': 4730000,
+    'Vùng III': 4140000,
+    'Vùng IV': 3700000
 };
+
+// Mutable wages — overridden from UI, persisted in localStorage
+const STORAGE_KEY = 'custom_minimum_wages';
+
+export function getMinimumWages(): Record<string, number> {
+    try {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) return { ...DEFAULT_MINIMUM_WAGES, ...JSON.parse(saved) };
+    } catch { }
+    return { ...DEFAULT_MINIMUM_WAGES };
+}
+
+export function setMinimumWages(wages: Record<string, number>): void {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(wages));
+    Object.keys(wages).forEach(k => { MINIMUM_WAGES[k] = wages[k]; });
+}
+
+export let MINIMUM_WAGES: Record<string, number> = getMinimumWages();
 
 export type MemberType =
     | 'bhxh'            // Có BHXH bắt buộc (đang đi làm)

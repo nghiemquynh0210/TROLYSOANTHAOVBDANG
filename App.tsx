@@ -22,6 +22,8 @@ import ScheduleReminder from './components/ScheduleReminder';
 import PartyFeeAssistant from './components/PartyFeeAssistant';
 import CommentAssistant from './components/CommentAssistant';
 import DocumentDashboard from './components/DocumentDashboard';
+import DashboardOverview from './components/DashboardOverview';
+import QualityAssessment from './components/QualityAssessment';
 import AuthPage from './components/AuthPage';
 import PendingApproval from './components/PendingApproval';
 import AdminApproval from './components/AdminApproval';
@@ -29,6 +31,7 @@ import { scheduleService } from './services/scheduleService';
 import { saveDocument, generateTitle } from './services/documentService';
 import { onAuthStateChange, signOut, getSession, type AuthUser } from './services/authService';
 import { getMyProfile, type UserProfile } from './services/userProfileService';
+import { parseFile, formatFileSize, type ParsedFile } from './services/fileParserService';
 import './styles/workflow.css';
 import {
   ShieldCheck,
@@ -80,10 +83,12 @@ import {
   Bell,
   Wallet,
   MessageSquareText,
-  LogOut
+  LogOut,
+  Paperclip,
+  Upload
 } from 'lucide-react';
 
-type AppView = 'editor' | 'profiles' | 'dashboard' | 'compliance' | 'regulations' | 'meeting' | 'comments' | 'schedule' | 'partyfee' | 'docs' | 'admin';
+type AppView = 'home' | 'editor' | 'profiles' | 'dashboard' | 'compliance' | 'regulations' | 'meeting' | 'comments' | 'schedule' | 'partyfee' | 'docs' | 'admin';
 
 const App: React.FC = () => {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
@@ -96,7 +101,7 @@ const App: React.FC = () => {
   const [showSampleMenu, setShowSampleMenu] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showWorkflow, setShowWorkflow] = useState(false);
-  const [activeView, setActiveView] = useState<AppView>('editor');
+  const [activeView, setActiveView] = useState<AppView>('home');
   const [scheduleBadge, setScheduleBadge] = useState(0);
   const [apiKey, setApiKey] = useState<string>('');
   const [testingConnection, setTestingConnection] = useState(false);
@@ -137,6 +142,12 @@ const App: React.FC = () => {
   const [isExportingWord, setIsExportingWord] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [templateText, setTemplateText] = useState<string>('');
+  const [templateFileName, setTemplateFileName] = useState<string>('');
+  const [templateFileSize, setTemplateFileSize] = useState<number>(0);
+  const [isParsing, setIsParsing] = useState(false);
+  const [parseError, setParseError] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const isAuditLevel = docLevel === DocLevel.LEVEL_AUDIT;
 
@@ -284,11 +295,37 @@ const App: React.FC = () => {
     }
   };
 
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsParsing(true);
+    setParseError('');
+    try {
+      const result = await parseFile(file);
+      setTemplateText(result.text);
+      setTemplateFileName(result.fileName);
+      setTemplateFileSize(result.fileSize);
+    } catch (err: any) {
+      setParseError(err.message || 'Không đọc được file');
+      setTemplateText('');
+      setTemplateFileName('');
+    }
+    setIsParsing(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const clearTemplate = () => {
+    setTemplateText('');
+    setTemplateFileName('');
+    setTemplateFileSize(0);
+    setParseError('');
+  };
+
   const handleGenerate = async () => {
     setIsGenerating(true);
     setError(null);
     try {
-      const result = await generateDraftContent(docType, rawInput, metadata);
+      const result = await generateDraftContent(docType, rawInput, metadata, templateText || undefined);
       setGeneratedDoc(result);
       // Auto-save to document history
       saveDocument({
@@ -406,7 +443,7 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
     ) : (
       <div className="min-h-screen flex flex-col bg-[#f5f7fa]">
         <header className={`${{
-          editor: currentStyle.color, profiles: 'bg-blue-800', dashboard: 'bg-emerald-800',
+          editor: currentStyle.color, home: 'bg-emerald-800', profiles: 'bg-blue-800', dashboard: 'bg-emerald-800',
           compliance: 'bg-slate-800', regulations: 'bg-purple-800', meeting: 'bg-rose-800',
           comments: 'bg-indigo-800', schedule: 'bg-teal-800',
           partyfee: 'bg-amber-800', docs: 'bg-cyan-800', admin: 'bg-violet-800'
@@ -414,7 +451,7 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
           <div className="flex items-center gap-4">
             <div className="bg-white/10 p-2.5 rounded-xl backdrop-blur-md shadow-inner">
               {{
-                editor: currentStyle.icon, profiles: <Database className="w-5 h-5" />,
+                editor: currentStyle.icon, home: <LayoutDashboard className="w-5 h-5" />, profiles: <Database className="w-5 h-5" />,
                 dashboard: <LayoutDashboard className="w-5 h-5" />, compliance: <ShieldCheck className="w-5 h-5" />,
                 regulations: <BookOpen className="w-5 h-5" />, meeting: <Mic className="w-5 h-5" />,
                 comments: <MessageSquareText className="w-5 h-5" />,
@@ -430,7 +467,7 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
               </h1>
               <p className="text-[10px] font-bold opacity-80 uppercase tracking-widest">
                 {{
-                  editor: `Phân hệ: ${docLevel}`, profiles: 'Kho hồ sơ Đảng viên', dashboard: 'Lộ trình kết nạp',
+                  editor: `Phân hệ: ${docLevel}`, home: 'Tổng quan Chi bộ', profiles: 'Kho hồ sơ Đảng viên', dashboard: 'Lộ trình kết nạp',
                   compliance: 'Kiểm tra tuân thủ quy trình', regulations: 'Thư viện quy định Đảng',
                   meeting: 'Trợ lý biên bản cuộc họp', comments: 'Trợ lý gợi ý nhận xét chuẩn văn phong Đảng',
                   schedule: 'Nhắc lịch sinh hoạt',
@@ -446,6 +483,7 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
             {/* Navigation Tabs */}
             <div className="flex bg-white/10 rounded-xl p-1 backdrop-blur-md flex-wrap gap-0.5">
               {([
+                { key: 'home' as AppView, icon: <LayoutDashboard className="w-3.5 h-3.5" />, label: 'Tổng quan' },
                 { key: 'editor' as AppView, icon: <PenTool className="w-3.5 h-3.5" />, label: 'Soạn thảo' },
                 { key: 'profiles' as AppView, icon: <Database className="w-3.5 h-3.5" />, label: 'Hồ sơ' },
                 { key: 'dashboard' as AppView, icon: <LayoutDashboard className="w-3.5 h-3.5" />, label: 'Lộ trình' },
@@ -490,6 +528,7 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
         </header>
 
         <main className="flex-1 container mx-auto p-4 lg:p-8">
+          {activeView === 'home' && <DashboardOverview onNavigate={(v) => setActiveView(v as AppView)} />}
           {activeView === 'profiles' && <ProfileManager onDraftFromProfile={handleDraftFromProfile} onNavigateToDashboard={() => setActiveView('dashboard')} />}
           {activeView === 'dashboard' && <AdmissionDashboard onDraftFromProfile={handleDraftFromProfile} />}
           {activeView === 'compliance' && <CompliancePanel />}
@@ -521,7 +560,13 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
                         return (
                           <button
                             key={lvl}
-                            onClick={() => setDocLevel(lvl)}
+                            onClick={() => {
+                              setDocLevel(lvl);
+                              setRawInput('');
+                              setGeneratedDoc('');
+                              setError(null);
+                              clearTemplate();
+                            }}
                             className={`flex flex-col items-center justify-center p-2 rounded-2xl border-2 transition-all group relative overflow-hidden h-28 ${docLevel === lvl ? `${style.color} border-transparent text-white shadow-lg` : 'bg-gray-50 border-gray-100 text-gray-400 hover:border-gray-200'}`}
                           >
                             <div className={`transition-transform duration-300 group-hover:scale-110 ${docLevel === lvl ? 'text-white' : 'text-gray-300'}`}>
@@ -576,7 +621,13 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
                         <select
                           className="w-full p-4 bg-gray-50 border-2 border-gray-200 rounded-2xl font-bold text-[11px] outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500 transition-all appearance-none cursor-pointer shadow-sm"
                           value={docType}
-                          onChange={(e) => setDocType(e.target.value as DocType)}
+                          onChange={(e) => {
+                            setDocType(e.target.value as DocType);
+                            setRawInput('');
+                            setGeneratedDoc('');
+                            setError(null);
+                            clearTemplate();
+                          }}
                         >
                           {allowedDocTypes.map((type) => (
                             <option key={type} value={type} className="font-semibold py-2">
@@ -612,92 +663,138 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
                   </div>
                 </div>
 
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex-1 flex flex-col relative min-h-[350px]">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xs font-black uppercase text-gray-600 tracking-widest flex items-center gap-2">
-                      <span className={`w-6 h-6 ${currentStyle.color} text-white rounded flex items-center justify-center text-[10px]`}>03</span>
-                      Dữ liệu thực tế vụ việc
-                    </h2>
-                    <div className="relative" ref={menuRef}>
-                      <button onClick={() => setShowSampleMenu(!showSampleMenu)} className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg border border-amber-200 hover:bg-amber-100 transition-all text-[9px] font-black uppercase tracking-wider shadow-sm">
-                        <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Thư viện nghiệp vụ
+                {docType !== DocType.MONTHLY_MEETING_ASSESSMENT && (
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-200 flex-1 flex flex-col relative min-h-[350px]">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-xs font-black uppercase text-gray-600 tracking-widest flex items-center gap-2">
+                        <span className={`w-6 h-6 ${currentStyle.color} text-white rounded flex items-center justify-center text-[10px]`}>03</span>
+                        Dữ liệu thực tế vụ việc
+                      </h2>
+                      <div className="relative" ref={menuRef}>
+                        <button onClick={() => setShowSampleMenu(!showSampleMenu)} className="flex items-center gap-2 px-3 py-1.5 bg-amber-50 text-amber-700 rounded-lg border border-amber-200 hover:bg-amber-100 transition-all text-[9px] font-black uppercase tracking-wider shadow-sm">
+                          <Sparkles className="w-3.5 h-3.5 text-amber-500" /> Thư viện nghiệp vụ
+                        </button>
+                        {showSampleMenu && (
+                          <div className="absolute right-0 bottom-full mb-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                            <div className="bg-amber-50 px-4 py-3 border-b border-amber-100 flex items-center justify-between">
+                              <span className="text-[10px] font-black text-amber-800 uppercase tracking-widest">Kịch bản soạn thảo nhanh</span>
+                              <button onClick={() => setShowSampleMenu(false)}><X className="w-4 h-4 text-amber-400 hover:text-amber-600" /></button>
+                            </div>
+                            <div className="max-h-[350px] overflow-y-auto p-3 space-y-4">
+                              {currentGroups.map((group, idx) => (
+                                <div key={idx} className="space-y-1.5">
+                                  <h4 className="text-[9px] font-black text-gray-400 uppercase tracking-tighter border-l-2 border-amber-400 pl-2">{group.group}</h4>
+                                  {group.items.map((item, iIdx) => (
+                                    <button key={iIdx} onClick={() => handleSelectSample(item.content)} className="w-full text-left p-2.5 hover:bg-amber-50 rounded-lg border border-transparent hover:border-amber-100 transition-all group/item">
+                                      <div className="flex items-center gap-2 mb-1">
+                                        {item.icon}
+                                        <p className="text-[10px] font-bold text-gray-700 group-hover/item:text-amber-800">{item.title}</p>
+                                      </div>
+                                      <p className="text-[9px] text-gray-400 line-clamp-2 italic leading-relaxed group-hover/item:text-gray-600">"{item.content}"</p>
+                                    </button>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Template Upload */}
+                    <input ref={fileInputRef} type="file" accept=".pdf,.docx,.txt,.md,.csv" className="hidden" onChange={handleFileUpload} />
+                    <div className="flex items-center gap-2 mb-3">
+                      <button
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isParsing}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg border border-indigo-200 hover:bg-indigo-100 transition-all text-[9px] font-black uppercase tracking-wider shadow-sm"
+                      >
+                        {isParsing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Paperclip className="w-3.5 h-3.5" />}
+                        {isParsing ? 'Đang đọc...' : 'Tải mẫu'}
                       </button>
-                      {showSampleMenu && (
-                        <div className="absolute right-0 bottom-full mb-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-200 z-50 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                          <div className="bg-amber-50 px-4 py-3 border-b border-amber-100 flex items-center justify-between">
-                            <span className="text-[10px] font-black text-amber-800 uppercase tracking-widest">Kịch bản soạn thảo nhanh</span>
-                            <button onClick={() => setShowSampleMenu(false)}><X className="w-4 h-4 text-amber-400 hover:text-amber-600" /></button>
+                      <span className="text-[8px] text-gray-400">PDF, Word, TXT — AI sẽ soạn theo mẫu bạn upload</span>
+                    </div>
+
+                    {parseError && (
+                      <div className="mb-3 p-2.5 bg-red-50 border border-red-200 rounded-xl text-[10px] text-red-700 font-bold flex items-center gap-2">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" /> {parseError}
+                      </div>
+                    )}
+
+                    {templateText && (
+                      <div className="mb-3 bg-indigo-50 border border-indigo-200 rounded-xl overflow-hidden">
+                        <div className="px-3 py-2 flex items-center justify-between border-b border-indigo-100">
+                          <div className="flex items-center gap-2">
+                            <Upload className="w-3.5 h-3.5 text-indigo-500" />
+                            <span className="text-[10px] font-black text-indigo-800 truncate max-w-[180px]">{templateFileName}</span>
+                            <span className="text-[9px] text-indigo-400">{formatFileSize(templateFileSize)}</span>
                           </div>
-                          <div className="max-h-[350px] overflow-y-auto p-3 space-y-4">
-                            {currentGroups.map((group, idx) => (
-                              <div key={idx} className="space-y-1.5">
-                                <h4 className="text-[9px] font-black text-gray-400 uppercase tracking-tighter border-l-2 border-amber-400 pl-2">{group.group}</h4>
-                                {group.items.map((item, iIdx) => (
-                                  <button key={iIdx} onClick={() => handleSelectSample(item.content)} className="w-full text-left p-2.5 hover:bg-amber-50 rounded-lg border border-transparent hover:border-amber-100 transition-all group/item">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      {item.icon}
-                                      <p className="text-[10px] font-bold text-gray-700 group-hover/item:text-amber-800">{item.title}</p>
-                                    </div>
-                                    <p className="text-[9px] text-gray-400 line-clamp-2 italic leading-relaxed group-hover/item:text-gray-600">"{item.content}"</p>
-                                  </button>
-                                ))}
-                              </div>
-                            ))}
+                          <button onClick={clearTemplate} className="text-indigo-400 hover:text-red-500 transition-colors">
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <div className="p-3 max-h-28 overflow-y-auto">
+                          <pre className="text-[9px] text-indigo-700 whitespace-pre-wrap leading-relaxed font-mono">{templateText.length > 800 ? templateText.slice(0, 800) + '\n\n... (còn ' + (templateText.length - 800).toLocaleString() + ' ký tự)' : templateText}</pre>
+                        </div>
+                      </div>
+                    )}
+
+                    <textarea
+                      className="flex-1 w-full p-5 border-2 border-gray-100 rounded-2xl focus:ring-4 focus:ring-slate-100 outline-none transition-all text-sm leading-relaxed font-mono bg-gray-50/20 resize-none shadow-inner"
+                      placeholder={getDocPlaceholder(docType)}
+                      value={rawInput}
+                      onChange={(e) => setRawInput(e.target.value)}
+                    />
+
+                    <button
+                      onClick={handleGenerate}
+                      disabled={isGenerating}
+                      className={`mt-4 w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest text-white shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 ${isGenerating ? 'bg-gray-400' : `${currentStyle.color} hover:opacity-90`}`}
+                    >
+                      {isGenerating ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
+                      {isGenerating ? 'Đang soạn thảo hồ sơ...' : 'Bắt đầu biên soạn AI'}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {docType === DocType.MONTHLY_MEETING_ASSESSMENT ? (
+                <div className="lg:col-span-7">
+                  <QualityAssessment metadata={metadata} />
+                </div>
+              ) : (
+                <div className="lg:col-span-7 bg-white rounded-3xl shadow-2xl border border-gray-100 flex flex-col h-full overflow-hidden">
+                  <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10 no-print">
+                    <div className="flex items-center gap-3">
+                      <span className={`w-8 h-8 ${currentStyle.color} text-white rounded-xl flex items-center justify-center font-black text-xs shadow-md`}>04</span>
+                      <h2 className="text-sm font-black uppercase text-gray-700 tracking-widest">Dự thảo hoàn chỉnh</h2>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={handleExportPdf} disabled={!generatedDoc || isExportingPdf} className="px-3 py-2 text-[9px] font-black text-white bg-slate-800 hover:bg-slate-900 rounded-lg uppercase shadow-md flex items-center gap-2 active:scale-95 transition-all">
+                        {isExportingPdf ? <RefreshCw className="w-3 h-3 animate-spin" /> : <FileDown className="w-3 h-3" />} PDF
+                      </button>
+                      <button onClick={handleExportWord} disabled={!generatedDoc || isExportingWord} className="px-3 py-2 text-[9px] font-black text-white bg-[#b91c1c] hover:bg-red-800 rounded-lg uppercase shadow-md flex items-center gap-2 active:scale-95 transition-all">
+                        {isExportingWord ? <RefreshCw className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />} WORD
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto bg-slate-100/30 p-4 md:p-12 flex justify-center print:bg-white print:p-0">
+                    <div id="printable-document" className="w-full max-w-[21cm] bg-white shadow-2xl min-h-[29.7cm] p-[1.5cm_1.5cm_1.5cm_3cm] document-font whitespace-pre-wrap leading-[1.6] text-black relative print:shadow-none print:p-0 ring-1 ring-gray-100 flex flex-col transition-all duration-700">
+                      {generatedDoc ? (
+                        <div className="flex-1 text-[13pt] text-justify animate-in fade-in slide-in-from-bottom-4 duration-700">{generatedDoc}</div>
+                      ) : (
+                        <div className="h-full flex flex-col items-center justify-center text-gray-300 italic py-64 text-center">
+                          <div className="p-8 bg-gray-50 rounded-full mb-4 shadow-inner">
+                            <History className="w-12 h-12 text-gray-200" />
                           </div>
+                          <p className="max-w-[300px] text-[10px] font-black uppercase tracking-widest leading-loose text-gray-400">Chọn Tab quy trình và loại văn bản để AI bắt đầu soạn thảo bộ hồ sơ.</p>
                         </div>
                       )}
                     </div>
                   </div>
-
-                  <textarea
-                    className="flex-1 w-full p-5 border-2 border-gray-100 rounded-2xl focus:ring-4 focus:ring-slate-100 outline-none transition-all text-sm leading-relaxed font-mono bg-gray-50/20 resize-none shadow-inner"
-                    placeholder={getDocPlaceholder(docType)}
-                    value={rawInput}
-                    onChange={(e) => setRawInput(e.target.value)}
-                  />
-
-                  <button
-                    onClick={handleGenerate}
-                    disabled={isGenerating}
-                    className={`mt-4 w-full py-4 rounded-xl font-black text-xs uppercase tracking-widest text-white shadow-xl transition-all active:scale-95 flex items-center justify-center gap-3 ${isGenerating ? 'bg-gray-400' : `${currentStyle.color} hover:opacity-90`}`}
-                  >
-                    {isGenerating ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Wand2 className="w-5 h-5" />}
-                    {isGenerating ? 'Đang soạn thảo hồ sơ...' : 'Bắt đầu biên soạn AI'}
-                  </button>
                 </div>
-              </div>
-
-              <div className="lg:col-span-7 bg-white rounded-3xl shadow-2xl border border-gray-100 flex flex-col h-full overflow-hidden">
-                <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10 no-print">
-                  <div className="flex items-center gap-3">
-                    <span className={`w-8 h-8 ${currentStyle.color} text-white rounded-xl flex items-center justify-center font-black text-xs shadow-md`}>04</span>
-                    <h2 className="text-sm font-black uppercase text-gray-700 tracking-widest">Dự thảo hoàn chỉnh</h2>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={handleExportPdf} disabled={!generatedDoc || isExportingPdf} className="px-3 py-2 text-[9px] font-black text-white bg-slate-800 hover:bg-slate-900 rounded-lg uppercase shadow-md flex items-center gap-2 active:scale-95 transition-all">
-                      {isExportingPdf ? <RefreshCw className="w-3 h-3 animate-spin" /> : <FileDown className="w-3 h-3" />} PDF
-                    </button>
-                    <button onClick={handleExportWord} disabled={!generatedDoc || isExportingWord} className="px-3 py-2 text-[9px] font-black text-white bg-[#b91c1c] hover:bg-red-800 rounded-lg uppercase shadow-md flex items-center gap-2 active:scale-95 transition-all">
-                      {isExportingWord ? <RefreshCw className="w-3 h-3 animate-spin" /> : <FileText className="w-3 h-3" />} WORD
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex-1 overflow-y-auto bg-slate-100/30 p-4 md:p-12 flex justify-center print:bg-white print:p-0">
-                  <div id="printable-document" className="w-full max-w-[21cm] bg-white shadow-2xl min-h-[29.7cm] p-[1.5cm_1.5cm_1.5cm_3cm] document-font whitespace-pre-wrap leading-[1.6] text-black relative print:shadow-none print:p-0 ring-1 ring-gray-100 flex flex-col transition-all duration-700">
-                    {generatedDoc ? (
-                      <div className="flex-1 text-[13pt] text-justify animate-in fade-in slide-in-from-bottom-4 duration-700">{generatedDoc}</div>
-                    ) : (
-                      <div className="h-full flex flex-col items-center justify-center text-gray-300 italic py-64 text-center">
-                        <div className="p-8 bg-gray-50 rounded-full mb-4 shadow-inner">
-                          <History className="w-12 h-12 text-gray-200" />
-                        </div>
-                        <p className="max-w-[300px] text-[10px] font-black uppercase tracking-widest leading-loose text-gray-400">Chọn Tab quy trình và loại văn bản để AI bắt đầu soạn thảo bộ hồ sơ.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+              )}
             </div>
           )}
         </main>
