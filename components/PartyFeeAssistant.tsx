@@ -18,7 +18,8 @@ import {
     upsertMember, deleteMember as deleteDbMember,
     recordPayment, fetchPayments, dbToAppMember, appToDbMember
 } from '../services/paymentService';
-import { Search } from 'lucide-react';
+import { checkPaymentsForMonth, MatchResult } from '../services/sepayService';
+import { Search, Landmark, RefreshCw } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 // ─── Types ───────────────────────────────────────────
@@ -129,6 +130,12 @@ const PartyFeeAssistant: React.FC = () => {
     const [defaultRegion, setDefaultRegion] = useState('Vùng I');
     const [qrMember, setQrMember] = useState<PartyMember | null>(null);
     const [defaultType, setDefaultType] = useState<MemberType>('bhxh');
+
+    // SePay integration state
+    const [sepayChecking, setSepayChecking] = useState(false);
+    const [sepayResults, setSepayResults] = useState<MatchResult[] | null>(null);
+    const [sepayError, setSepayError] = useState<string | null>(null);
+    const [showSepayModal, setShowSepayModal] = useState(false);
 
     // Monthly payment tracking state
     const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1);
@@ -753,6 +760,58 @@ const PartyFeeAssistant: React.FC = () => {
                                         <CheckCircle2 className="w-3 h-3" />
                                         {paymentsLoading ? '...' : `${Object.values(monthlyPaidMap).filter(Boolean).length}/${members.filter(m => m.feeAmount > 0).length}`} đã nộp T{String(selectedMonth).padStart(2, '0')}
                                     </span>
+                                    {/* SePay Check Button */}
+                                    <button
+                                        onClick={async () => {
+                                            setSepayChecking(true);
+                                            setSepayError(null);
+                                            setSepayResults(null);
+                                            try {
+                                                const { results, error } = await checkPaymentsForMonth(
+                                                    members.map(m => ({ id: m.id, hoTen: m.hoTen, feeAmount: m.feeAmount })),
+                                                    selectedMonth,
+                                                    selectedYear
+                                                );
+                                                if (error) {
+                                                    setSepayError(error);
+                                                } else {
+                                                    setSepayResults(results);
+                                                    // Auto-record matched payments
+                                                    for (const r of results) {
+                                                        if (r.memberId && (r.confidence === 'exact' || r.confidence === 'partial') && !monthlyPaidMap[r.memberId]) {
+                                                            await recordPayment({
+                                                                member_id: r.memberId,
+                                                                amount: r.transaction.transfer_amount,
+                                                                month: selectedMonth,
+                                                                year: selectedYear,
+                                                                paid: true,
+                                                                payment_method: 'auto_webhook',
+                                                                transaction_ref: r.transaction.reference_number || r.transaction.id,
+                                                                note: `Auto SePay: ${r.transaction.transaction_content}`
+                                                            });
+                                                            setMonthlyPaidMap(prev => ({ ...prev, [r.memberId!]: true }));
+                                                        }
+                                                    }
+                                                }
+                                            } catch (err) {
+                                                setSepayError(err instanceof Error ? err.message : 'Lỗi không xác định');
+                                            }
+                                            setSepayChecking(false);
+                                            setShowSepayModal(true);
+                                        }}
+                                        disabled={sepayChecking || members.length === 0}
+                                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${sepayChecking
+                                            ? 'bg-blue-100 text-blue-400 cursor-wait'
+                                            : 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer shadow-sm'
+                                            }`}
+                                        title="Kiểm tra giao dịch CK qua SePay"
+                                    >
+                                        {sepayChecking ? (
+                                            <><RefreshCw className="w-3 h-3 animate-spin" /> Đang kiểm tra...</>
+                                        ) : (
+                                            <><Landmark className="w-3 h-3" /> Kiểm tra CK</>
+                                        )}
+                                    </button>
                                 </div>
                             </div>
 
@@ -1652,6 +1711,120 @@ const PartyFeeAssistant: React.FC = () => {
                 </div>
             </div>
 
+            {/* ─── SEPAY RESULTS MODAL ──────────────── */}
+            {showSepayModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowSepayModal(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-5 py-4 flex items-center justify-between flex-shrink-0">
+                            <div className="flex items-center gap-2 text-white">
+                                <Landmark className="w-5 h-5" />
+                                <span className="text-sm font-bold">Kết quả kiểm tra SePay</span>
+                                <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px]">T{String(selectedMonth).padStart(2, '0')}/{selectedYear}</span>
+                            </div>
+                            <button onClick={() => setShowSepayModal(false)} className="text-white/70 hover:text-white transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="overflow-y-auto flex-1 p-5 space-y-3">
+                            {sepayError && (
+                                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 flex items-start gap-2">
+                                    <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                    <div>
+                                        <p className="text-xs font-bold text-red-700">Lỗi kết nối SePay</p>
+                                        <p className="text-[10px] text-red-600 mt-0.5">{sepayError}</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {sepayResults && sepayResults.length === 0 && !sepayError && (
+                                <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 text-center">
+                                    <Landmark className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                                    <p className="text-sm font-bold text-gray-500">Không tìm thấy giao dịch</p>
+                                    <p className="text-[10px] text-gray-400 mt-1">Không có chuyển khoản nào trong tháng {String(selectedMonth).padStart(2, '0')}/{selectedYear}</p>
+                                </div>
+                            )}
+
+                            {sepayResults && sepayResults.length > 0 && (
+                                <>
+                                    {/* Summary */}
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                                            <p className="text-lg font-black text-green-700">{sepayResults.filter(r => r.confidence === 'exact').length}</p>
+                                            <p className="text-[9px] font-bold text-green-600 uppercase">Khớp chính xác</p>
+                                        </div>
+                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                                            <p className="text-lg font-black text-amber-700">{sepayResults.filter(r => r.confidence === 'partial').length}</p>
+                                            <p className="text-[9px] font-bold text-amber-600 uppercase">Khớp gần đúng</p>
+                                        </div>
+                                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                                            <p className="text-lg font-black text-red-700">{sepayResults.filter(r => r.confidence === 'none').length}</p>
+                                            <p className="text-[9px] font-bold text-red-600 uppercase">Không khớp</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Matched transactions */}
+                                    {sepayResults.filter(r => r.confidence !== 'none').length > 0 && (
+                                        <div>
+                                            <h4 className="text-[10px] font-black text-green-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                                <CheckCircle2 className="w-3.5 h-3.5" /> Giao dịch đã khớp — tự động đánh dấu "Đã nộp"
+                                            </h4>
+                                            <div className="space-y-1.5">
+                                                {sepayResults.filter(r => r.confidence !== 'none').map((r, i) => (
+                                                    <div key={i} className={`rounded-lg p-2.5 text-xs border ${r.confidence === 'exact' ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-bold text-gray-800">{r.memberName}</span>
+                                                            <span className="font-bold text-green-700">{r.transaction.transfer_amount.toLocaleString('vi-VN')}đ</span>
+                                                        </div>
+                                                        <p className="text-[10px] text-gray-500 mt-0.5">{r.matchedBy}</p>
+                                                        <p className="text-[10px] text-gray-400 mt-0.5 font-mono truncate">CK: {r.transaction.transaction_content}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Unmatched transactions */}
+                                    {sepayResults.filter(r => r.confidence === 'none').length > 0 && (
+                                        <div>
+                                            <h4 className="text-[10px] font-black text-red-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                                <AlertTriangle className="w-3.5 h-3.5" /> Giao dịch chưa khớp
+                                            </h4>
+                                            <div className="space-y-1.5">
+                                                {sepayResults.filter(r => r.confidence === 'none').map((r, i) => (
+                                                    <div key={i} className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="font-mono text-gray-600 truncate flex-1">{r.transaction.transaction_content}</span>
+                                                            <span className="font-bold text-gray-700 ml-2">{r.transaction.transfer_amount.toLocaleString('vi-VN')}đ</span>
+                                                        </div>
+                                                        <p className="text-[10px] text-red-500 mt-0.5">{r.matchedBy}</p>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </>
+                            )}
+                        </div>
+
+                        {/* Footer */}
+                        <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex-shrink-0">
+                            <div className="flex items-center justify-between">
+                                <p className="text-[10px] text-gray-400">Nguồn: SePay.vn • TK: {BANK_CONFIG.accountNo}</p>
+                                <button
+                                    onClick={() => setShowSepayModal(false)}
+                                    className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                                >
+                                    Đóng
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* ─── QR PAYMENT MODAL ─────────────────── */}
             {qrMember && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setQrMember(null)}>
@@ -1672,7 +1845,7 @@ const PartyFeeAssistant: React.FC = () => {
                             <p className="text-sm font-bold text-gray-800">{qrMember.hoTen || 'Chưa có tên'}</p>
                             <p className="text-xs text-gray-500">{qrMember.chucVu || 'Đảng viên'} • {MEMBER_TYPES.find(t => t.key === qrMember.memberType)?.label}</p>
                             <div className="mt-2 flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2">
-                                <span className="text-xs text-amber-700 font-medium">Đảng phí tháng {String(reportMonth).padStart(2, '0')}/{reportYear}</span>
+                                <span className="text-xs text-amber-700 font-medium">Đảng phí tháng {String(selectedMonth).padStart(2, '0')}/{selectedYear}</span>
                                 <span className="text-lg font-black text-amber-800">{formatCurrency(qrMember.feeAmount)}</span>
                             </div>
                         </div>
@@ -1681,7 +1854,7 @@ const PartyFeeAssistant: React.FC = () => {
                         <div className="px-5 py-3 flex justify-center">
                             {qrMember.feeAmount > 0 ? (
                                 <img
-                                    src={getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, reportMonth, reportYear)}
+                                    src={getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear)}
                                     alt={`QR thanh toán ${qrMember.hoTen}`}
                                     className="w-64 h-64 object-contain rounded-lg border border-gray-100"
                                 />
@@ -1698,10 +1871,10 @@ const PartyFeeAssistant: React.FC = () => {
                         {/* Bank info */}
                         <div className="px-5 pb-3">
                             <div className="bg-gray-50 rounded-lg px-3 py-2 space-y-1 text-xs text-gray-600">
-                                <div className="flex justify-between"><span>Ngân hàng:</span><span className="font-bold">{BANK_CONFIG.bankId} - CN Nam Bình Dương</span></div>
+                                <div className="flex justify-between"><span>Ngân hàng:</span><span className="font-bold">{BANK_CONFIG.bankId} - {BANK_CONFIG.branchName || 'PGD Thuận An'}</span></div>
                                 <div className="flex justify-between"><span>Số TK:</span><span className="font-bold font-mono">{BANK_CONFIG.accountNo}</span></div>
                                 <div className="flex justify-between"><span>Tên TK:</span><span className="font-bold">{BANK_CONFIG.accountName}</span></div>
-                                <div className="flex justify-between"><span>Nội dung CK:</span><span className="font-bold text-blue-600">DP T{String(reportMonth).padStart(2, '0')}/{reportYear} {qrMember.hoTen}</span></div>
+                                <div className="flex justify-between"><span>Nội dung CK:</span><span className="font-bold text-blue-600">DP T{String(selectedMonth).padStart(2, '0')}/{selectedYear} {qrMember.hoTen}</span></div>
                             </div>
                         </div>
 
@@ -1709,10 +1882,10 @@ const PartyFeeAssistant: React.FC = () => {
                         <div className="px-5 pb-5 grid grid-cols-3 gap-2">
                             <button
                                 onClick={() => {
-                                    const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, reportMonth, reportYear);
+                                    const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear);
                                     const a = document.createElement('a');
                                     a.href = url;
-                                    a.download = `QR_${qrMember.hoTen.replace(/\s/g, '_')}_T${String(reportMonth).padStart(2, '0')}_${reportYear}.png`;
+                                    a.download = `QR_${qrMember.hoTen.replace(/\s/g, '_')}_T${String(selectedMonth).padStart(2, '0')}_${selectedYear}.png`;
                                     a.target = '_blank';
                                     a.click();
                                 }}
@@ -1723,7 +1896,7 @@ const PartyFeeAssistant: React.FC = () => {
                             </button>
                             <button
                                 onClick={() => {
-                                    const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, reportMonth, reportYear);
+                                    const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear);
                                     navigator.clipboard.writeText(url);
                                 }}
                                 className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors text-blue-600"

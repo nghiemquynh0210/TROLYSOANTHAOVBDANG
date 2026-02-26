@@ -8,13 +8,22 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
+      proxy: {
+        '/api/sepay': {
+          target: 'https://my.sepay.vn',
+          changeOrigin: true,
+          rewrite: (path: string) => path.replace(/^\/api\/sepay/, ''),
+          secure: true
+        }
+      }
     },
     plugins: [react()],
     define: {
       'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || ''),
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || ''),
       'process.env.SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''),
-      'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '')
+      'process.env.SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''),
+      'process.env.SEPAY_API_KEY': JSON.stringify(env.VITE_SEPAY_API_KEY || process.env.VITE_SEPAY_API_KEY || '')
     },
     resolve: {
       alias: {

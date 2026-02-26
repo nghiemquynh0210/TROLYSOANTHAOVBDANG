@@ -235,9 +235,10 @@ export function calculateRetention(totalCollected: number) {
  */
 export const BANK_CONFIG = {
     bankId: 'BIDV',
-    accountNo: '8670100005',
-    accountName: 'CHI BO KHU PHO 3',
-    template: 'compact2'
+    accountNo: '96247W3F44',
+    accountName: 'NGHIEM XUAN QUYNH',
+    template: 'compact2',
+    branchName: 'BIDV-PGD Thuận An'
 };
 
 /**
