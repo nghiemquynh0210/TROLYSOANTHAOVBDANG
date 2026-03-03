@@ -1,7 +1,7 @@
 
 import { WORKFLOWS } from '../data/workflows';
 
-const STORAGE_KEY = 'compliance_tracking';
+const BASE_KEY = 'compliance_tracking';
 
 export interface ComplianceRecord {
     processType: string; // e.g. 'KIỂM TRA', 'GIÁM SÁT'
@@ -22,10 +22,21 @@ export interface ComplianceCheck {
 
 const generateId = (): string => Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
+/** Helper: get storage key scoped to user */
+function getKey(userId?: string | null): string {
+    return userId ? `${BASE_KEY}_${userId}` : BASE_KEY;
+}
+
 export const complianceService = {
+    _userId: null as string | null,
+
+    setUserId(id: string | null) {
+        this._userId = id;
+    },
+
     getAll(): ComplianceRecord[] {
         try {
-            const data = localStorage.getItem(STORAGE_KEY);
+            const data = localStorage.getItem(getKey(this._userId));
             return data ? JSON.parse(data) : [];
         } catch { return []; }
     },
@@ -44,7 +55,7 @@ export const complianceService = {
             createdAt: now, updatedAt: now
         };
         records.push(rec);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(records));
         return rec;
     },
 
@@ -56,7 +67,7 @@ export const complianceService = {
             records[idx].completedDocs.push(docType);
             records[idx].updatedAt = new Date().toISOString();
         }
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(records));
         return records[idx];
     },
 
@@ -66,7 +77,7 @@ export const complianceService = {
         if (idx === -1) return null;
         records[idx].completedDocs = records[idx].completedDocs.filter(d => d !== docType);
         records[idx].updatedAt = new Date().toISOString();
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(records));
         return records[idx];
     },
 
@@ -74,7 +85,7 @@ export const complianceService = {
         const records = this.getAll();
         const filtered = records.filter(r => r.caseId !== caseId);
         if (filtered.length === records.length) return false;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(filtered));
         return true;
     },
 

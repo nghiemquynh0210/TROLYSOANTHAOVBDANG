@@ -1,14 +1,25 @@
 
 import { AdmissionTracking, AdmissionStep } from '../types';
 
-const STORAGE_KEY = 'admission_tracking';
+const BASE_KEY = 'admission_tracking';
 
 const generateId = (): string => Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
+/** Helper: get storage key scoped to user */
+function getKey(userId?: string | null): string {
+    return userId ? `${BASE_KEY}_${userId}` : BASE_KEY;
+}
+
 export const admissionService = {
+    _userId: null as string | null,
+
+    setUserId(id: string | null) {
+        this._userId = id;
+    },
+
     getAll(): AdmissionTracking[] {
         try {
-            const data = localStorage.getItem(STORAGE_KEY);
+            const data = localStorage.getItem(getKey(this._userId));
             return data ? JSON.parse(data) : [];
         } catch {
             return [];
@@ -37,7 +48,7 @@ export const admissionService = {
             updatedAt: now,
         };
         items.push(newTracking);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(items));
         return newTracking;
     },
 
@@ -53,7 +64,7 @@ export const admissionService = {
         items[idx].updatedAt = now;
         items[idx].history.push({ step: newStep, date: now, note: note || `Chuyển sang: ${newStep}` });
 
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(items));
         return items[idx];
     },
 
@@ -61,7 +72,7 @@ export const admissionService = {
         const items = this.getAll();
         const filtered = items.filter(t => t.profileId !== profileId);
         if (filtered.length === items.length) return false;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(filtered));
         return true;
     }
 };

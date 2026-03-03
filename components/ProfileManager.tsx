@@ -9,6 +9,7 @@ import {
     FileText, User, ChevronUp, ChevronDown, ClipboardList, SearchCheck, MapPin,
     Zap, Sparkles, X, CheckCircle2, FileCheck, FilePlus2, Users, Briefcase, ArrowRight
 } from 'lucide-react';
+import { useConfirm } from './ConfirmProvider';
 
 // ─── Template definitions ────────────────────────────
 interface FormTemplate {
@@ -209,6 +210,7 @@ const TemplatePicker: React.FC<{
 
 // ─── Main Component ──────────────────────────────────
 const ProfileManager: React.FC<Props> = ({ onDraftFromProfile, onNavigateToDashboard }) => {
+    const { showConfirm, showAlert } = useConfirm();
     const [profiles, setProfiles] = useState<MemberProfile[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [showForm, setShowForm] = useState(false);
@@ -237,17 +239,17 @@ const ProfileManager: React.FC<Props> = ({ onDraftFromProfile, onNavigateToDashb
         loadProfiles();
     };
 
-    const handleDelete = (id: string, name: string) => {
-        if (confirm(`Bạn có chắc chắn muốn xóa hồ sơ "${name}"?`)) {
+    const handleDelete = async (id: string, name: string) => {
+        if (await showConfirm(`Bạn có chắc chắn muốn xóa hồ sơ "${name}"?`, 'Xóa hồ sơ', 'warning')) {
             profileService.remove(id);
             admissionService.remove(id);
             loadProfiles();
         }
     };
 
-    const handleAddToTracking = (profileId: string) => {
+    const handleAddToTracking = async (profileId: string) => {
         admissionService.create(profileId, 'Thêm vào lộ trình theo dõi');
-        alert('Đã thêm vào Lộ trình kết nạp!');
+        await showAlert('Đã thêm vào Lộ trình kết nạp!', 'Thành công', 'success');
     };
 
     const handleSelectTemplate = useCallback((profile: MemberProfile, docType: DocType) => {

@@ -1,14 +1,25 @@
 
 import { MemberProfile } from '../types';
 
-const STORAGE_KEY = 'member_profiles';
+const BASE_KEY = 'member_profiles';
 
 const generateId = (): string => Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
+/** Helper: get storage key scoped to user */
+function getKey(userId?: string | null): string {
+    return userId ? `${BASE_KEY}_${userId}` : BASE_KEY;
+}
+
 export const profileService = {
+    _userId: null as string | null,
+
+    setUserId(id: string | null) {
+        this._userId = id;
+    },
+
     getAll(): MemberProfile[] {
         try {
-            const data = localStorage.getItem(STORAGE_KEY);
+            const data = localStorage.getItem(getKey(this._userId));
             return data ? JSON.parse(data) : [];
         } catch {
             return [];
@@ -29,7 +40,7 @@ export const profileService = {
             updatedAt: now,
         };
         profiles.push(newProfile);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(profiles));
         return newProfile;
     },
 
@@ -38,7 +49,7 @@ export const profileService = {
         const idx = profiles.findIndex(p => p.id === id);
         if (idx === -1) return null;
         profiles[idx] = { ...profiles[idx], ...data, updatedAt: new Date().toISOString() };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(profiles));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(profiles));
         return profiles[idx];
     },
 
@@ -46,7 +57,7 @@ export const profileService = {
         const profiles = this.getAll();
         const filtered = profiles.filter(p => p.id !== id);
         if (filtered.length === profiles.length) return false;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(filtered));
         return true;
     },
 

@@ -10,12 +10,14 @@ import {
 } from '../services/documentService';
 import { exportToPdf } from '../services/pdfService';
 import { exportToDocx } from '../services/wordService';
+import { useConfirm } from './ConfirmProvider';
 
 interface Props {
     onOpenInEditor?: (content: string, docType: string) => void;
 }
 
 const DocumentDashboard: React.FC<Props> = ({ onOpenInEditor }) => {
+    const { showConfirm } = useConfirm();
     const [documents, setDocuments] = useState<SavedDocument[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [filterType, setFilterType] = useState('');
@@ -61,8 +63,8 @@ const DocumentDashboard: React.FC<Props> = ({ onOpenInEditor }) => {
         return result;
     }, [documents, filterType, searchQuery, sortOrder]);
 
-    const handleDelete = (id: string) => {
-        if (confirm('Xóa văn bản này?')) {
+    const handleDelete = async (id: string) => {
+        if (await showConfirm('Xóa văn bản này?', 'Xóa văn bản', 'warning')) {
             deleteDocument(id);
             loadDocs();
             if (previewDoc?.id === id) setPreviewDoc(null);

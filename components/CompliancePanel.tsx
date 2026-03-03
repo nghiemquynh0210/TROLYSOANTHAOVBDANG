@@ -6,10 +6,12 @@ import {
     ShieldCheck, Plus, Trash2, CheckCircle2, AlertTriangle,
     Circle, ChevronDown, ChevronUp, X
 } from 'lucide-react';
+import { useConfirm } from './ConfirmProvider';
 
 const PROCESS_TYPES = Object.keys(WORKFLOWS);
 
 const CompliancePanel: React.FC = () => {
+    const { showConfirm, showAlert } = useConfirm();
     const [records, setRecords] = useState<ComplianceRecord[]>([]);
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [showAdd, setShowAdd] = useState(false);
@@ -19,8 +21,8 @@ const CompliancePanel: React.FC = () => {
     const load = () => setRecords(complianceService.getAll());
     useEffect(() => { load(); }, []);
 
-    const handleCreate = () => {
-        if (!newCaseName.trim()) { alert('Nhập tên vụ việc!'); return; }
+    const handleCreate = async () => {
+        if (!newCaseName.trim()) { await showAlert('Nhập tên vụ việc!', 'Thiếu thông tin', 'warning'); return; }
         complianceService.create(newProcess, newCaseName.trim());
         setNewCaseName('');
         setShowAdd(false);
@@ -33,8 +35,8 @@ const CompliancePanel: React.FC = () => {
         load();
     };
 
-    const handleDelete = (caseId: string, name: string) => {
-        if (confirm(`Xóa theo dõi "${name}"?`)) { complianceService.remove(caseId); load(); }
+    const handleDelete = async (caseId: string, name: string) => {
+        if (await showConfirm(`Xóa theo dõi "${name}"?`, 'Xóa vụ việc', 'warning')) { complianceService.remove(caseId); load(); }
     };
 
     const getStatusIcon = (status: ComplianceCheck['status']) => {

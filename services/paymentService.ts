@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 // ─── Types ─────────────────────────────────────────
 export interface DBPartyMember {
     id: string;
+    user_id: string;
     stt: number;
     ho_ten: string;
     chuc_vu: string;
@@ -19,6 +20,7 @@ export interface DBPartyMember {
 
 export interface DBPayment {
     id?: string;
+    user_id: string;
     member_id: string;
     amount: number;
     month: number;
@@ -31,58 +33,134 @@ export interface DBPayment {
     created_at?: string;
 }
 
+/** Helper to get current user ID */
+async function getCurrentUserId(): Promise<string> {
+    const { data } = await supabase.auth.getUser();
+    if (!data.user?.id) throw new Error("User not authenticated");
+    return data.user.id;
+}
+
 // ─── Member CRUD ───────────────────────────────────
 
-/** Fetch all members ordered by STT */
+/** Fetch all members ordered by STT for current user */
 export async function fetchMembers(): Promise<DBPartyMember[]> {
-    const { data, error } = await supabase
-        .from('party_members')
-        .select('*')
-        .order('stt', { ascending: true });
-    if (error) {
-        console.error('fetchMembers error:', error);
-        return [];
-    }
-    return data || [];
+    try {
+        const userId = await getCurrentUserId();
+        const { data, error } = await supabase
+            .from('party_members')
+            .select('*')
+            .eq('user_id', userId)
+            .order('stt', { ascending: true });
+        if (error) {
+            console.error('fetchMembers error:', error);
+            return [];
+        }
+        return data || [];
+    } catch { return []; }
 }
 
-/** Upsert a single member (insert or update) */
+/** Upsert a single member (insert or update) for current user */
 export async function upsertMember(member: DBPartyMember): Promise<DBPartyMember | null> {
-    const { data, error } = await supabase
-        .from('party_members')
-        .upsert(member, { onConflict: 'id' })
-        .select()
-        .single();
-    if (error) {
-        console.error('upsertMember error:', error);
-        return null;
-    }
-    return data;
+    try {
+        const userId = await getCurrentUserId();
+        const memberWithUser = { ...member, user_id: userId };
+        const { data, error } = await supabase
+            .from('party_members')
+            .upsert(memberWithUser, { onConflict: 'id' })
+            .select()
+            .single();
+        if (error) {
+            console.error('upsertMember error:', error);
+            return null;
+        }
+        return data;
+    } catch { return null; }
 }
 
-/** Batch upsert all members */
+/** Batch upsert all members for current user */
 export async function syncAllMembers(members: DBPartyMember[]): Promise<boolean> {
-    const { error } = await supabase
-        .from('party_members')
-        .upsert(members, { onConflict: 'id' });
-    if (error) {
-        console.error('syncAllMembers error:', error);
-        return false;
-    }
-    return true;
+    try {
+        const userId = await getCurrentUserId();
+        const membersWithUser = members.map(m => ({ ...m, user_id: userId }));
+        const { error } = await supabase
+            .from('party_members')
+            .upsert(membersWithUser, { onConflict: 'id' });
+        if (error) {
+            console.error('syncAllMembers error:', error);
+            return false;
+        }
+        return true;
+    } catch { return false; }
 }
 
 /** Delete a member by ID */
 export async function deleteMember(id: string): Promise<boolean> {
-    const { error } = await supabase
-        .from('party_members')
-        .delete()
-        .eq('id', id);
-    if (error) {
-        console.error('deleteMember error:', error);
+    try {
+        const userId = await getCurrentUserId();
+        const { error, count } = await supabase
+            .from('party_members')
+            .delete({ count: 'exact' })
+            .eq('id', id)
+            .eq('user_id', userId);
+        if (error) {
+            console.error('[deleteMember] Supabase error:', error);
+            return false;
+        }
+        console.log(`[deleteMember] Deleted ${count ?? '?'} row(s) for id=${id}`);
+        return true;
+    } catch (err) {
+        console.error('[deleteMember] Exception:', err);
         return false;
     }
-    return true;
+}
+
+/** Delete ALL members for current user */
+export async function deleteAllMembers(): Promise<boolean> {
+    try {
+        const userId = await getCurrentUserId();
+        console.log('[deleteAllMembers] Starting delete for user:', userId);
+        
+        // First, count how many exist
+        const { count: existingCount } = await supabase
+            .from('party_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', userId);
+        console.log('[deleteAllMembers] Members to delete:', existingCount);
+        
+        if (!existingCount || existingCount === 0) {
+            console.log('[deleteAllMembers] No members found, nothing to delete');
+            return true;
+        }
+
+        const { error, count } = await supabase
+            .from('party_members')
+            .delete({ count: 'exact' })
+            .eq('user_id', userId);
+        
+        if (error) {
+            console.error('[deleteAllMembers] Supabase error:', JSON.stringify(error));
+            return false;
+        }
+        
+        console.log(`[deleteAllMembers] Successfully deleted ${count ?? '?'} members`);
+        
+        // Verify deletion
+        const { count: remainingCount } = await supabase
+            .from('party_members')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', userId);
+        
+        if (remainingCount && remainingCount > 0) {
+            console.warn(`[deleteAllMembers] WARNING: ${remainingCount} members still remain after delete!`);
+            return false;
+        }
+        
+        console.log('[deleteAllMembers] Verified: all members deleted successfully');
+        return true;
+    } catch (err) {
+        console.error('[deleteAllMembers] Exception:', err);
+        return false;
+    }
 }
 
 /** Update payment status for a member */
@@ -100,35 +178,43 @@ export async function updateMemberPaidStatus(id: string, paid: boolean): Promise
 
 // ─── Payment History ───────────────────────────────
 
-/** Record a payment */
-export async function recordPayment(payment: Omit<DBPayment, 'id' | 'created_at'>): Promise<DBPayment | null> {
-    const { data, error } = await supabase
-        .from('party_payments')
-        .insert(payment)
-        .select()
-        .single();
-    if (error) {
-        console.error('recordPayment error:', error);
-        return null;
-    }
-    // Also update member paid status
-    await updateMemberPaidStatus(payment.member_id, true);
-    return data;
+/** Record a payment for current user */
+export async function recordPayment(payment: Omit<DBPayment, 'id' | 'created_at' | 'user_id'>): Promise<DBPayment | null> {
+    try {
+        const userId = await getCurrentUserId();
+        const paymentWithUser = { ...payment, user_id: userId };
+        const { data, error } = await supabase
+            .from('party_payments')
+            .insert(paymentWithUser)
+            .select()
+            .single();
+        if (error) {
+            console.error('recordPayment error:', error);
+            return null;
+        }
+        // Also update member paid status
+        await updateMemberPaidStatus(payment.member_id, true);
+        return data;
+    } catch { return null; }
 }
 
-/** Get payments for a specific month/year */
+/** Get payments for current user for a specific month/year */
 export async function fetchPayments(month: number, year: number): Promise<DBPayment[]> {
-    const { data, error } = await supabase
-        .from('party_payments')
-        .select('*')
-        .eq('month', month)
-        .eq('year', year)
-        .order('created_at', { ascending: false });
-    if (error) {
-        console.error('fetchPayments error:', error);
-        return [];
-    }
-    return data || [];
+    try {
+        const userId = await getCurrentUserId();
+        const { data, error } = await supabase
+            .from('party_payments')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('month', month)
+            .eq('year', year)
+            .order('created_at', { ascending: false });
+        if (error) {
+            console.error('fetchPayments error:', error);
+            return [];
+        }
+        return data || [];
+    } catch { return []; }
 }
 
 // ─── Conversion helpers ────────────────────────────
@@ -137,6 +223,7 @@ export async function fetchPayments(month: number, year: number): Promise<DBPaym
 export function dbToAppMember(db: DBPartyMember) {
     return {
         id: db.id,
+        userId: db.user_id,
         stt: db.stt,
         hoTen: db.ho_ten,
         chucVu: db.chuc_vu,
@@ -152,12 +239,13 @@ export function dbToAppMember(db: DBPartyMember) {
 
 /** Convert app format → DB format */
 export function appToDbMember(app: {
-    id: string; stt: number; hoTen: string; chucVu: string;
+    id: string; userId?: string; stt: number; hoTen: string; chucVu: string;
     ngayVaoDang: string; memberType: string; salary: number;
     region: string; feeAmount: number; note: string; paid: boolean;
 }): DBPartyMember {
     return {
         id: app.id,
+        user_id: app.userId || '',
         stt: app.stt,
         ho_ten: app.hoTen,
         chuc_vu: app.chucVu,

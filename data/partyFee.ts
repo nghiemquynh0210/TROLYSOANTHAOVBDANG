@@ -17,16 +17,18 @@ export const DEFAULT_MINIMUM_WAGES: Record<string, number> = {
 // Mutable wages — overridden from UI, persisted in localStorage
 const STORAGE_KEY = 'custom_minimum_wages';
 
-export function getMinimumWages(): Record<string, number> {
+export function getMinimumWages(userId?: string): Record<string, number> {
     try {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const key = userId ? `${STORAGE_KEY}_${userId}` : STORAGE_KEY;
+        const saved = localStorage.getItem(key);
         if (saved) return { ...DEFAULT_MINIMUM_WAGES, ...JSON.parse(saved) };
     } catch { }
     return { ...DEFAULT_MINIMUM_WAGES };
 }
 
-export function setMinimumWages(wages: Record<string, number>): void {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(wages));
+export function setMinimumWages(wages: Record<string, number>, userId?: string): void {
+    const key = userId ? `${STORAGE_KEY}_${userId}` : STORAGE_KEY;
+    localStorage.setItem(key, JSON.stringify(wages));
     Object.keys(wages).forEach(k => { MINIMUM_WAGES[k] = wages[k]; });
 }
 
@@ -244,9 +246,24 @@ export const BANK_CONFIG = {
 /**
  * Tạo URL ảnh QR VietQR cho đảng viên
  */
-export function getVietQRUrl(amount: number, memberName: string, month: number, year: number): string {
+export function getVietQRUrl(
+    amount: number,
+    memberName: string,
+    month: number,
+    year: number,
+    customBankDetails?: {
+        bankId: string;
+        accountNo: string;
+        accountName: string;
+    }
+): string {
     const mm = String(month).padStart(2, '0');
     const addInfo = encodeURIComponent(`DP T${mm}/${year} ${memberName}`.slice(0, 50));
-    const accName = encodeURIComponent(BANK_CONFIG.accountName);
-    return `https://img.vietqr.io/image/${BANK_CONFIG.bankId}-${BANK_CONFIG.accountNo}-${BANK_CONFIG.template}.png?amount=${amount}&addInfo=${addInfo}&accountName=${accName}`;
+
+    const bankId = customBankDetails?.bankId || BANK_CONFIG.bankId;
+    const accountNo = customBankDetails?.accountNo || BANK_CONFIG.accountNo;
+    const accountName = customBankDetails?.accountName || BANK_CONFIG.accountName;
+    const accNameEncoded = encodeURIComponent(accountName);
+
+    return `https://img.vietqr.io/image/${bankId}-${accountNo}-${BANK_CONFIG.template}.png?amount=${amount}&addInfo=${addInfo}&accountName=${accNameEncoded}`;
 }

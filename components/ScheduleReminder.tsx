@@ -5,8 +5,10 @@ import {
     CalendarDays, Plus, Trash2, CheckCircle2, Circle,
     AlertTriangle, Clock, X, Bell
 } from 'lucide-react';
+import { useConfirm } from './ConfirmProvider';
 
 const ScheduleReminder: React.FC = () => {
+    const { showAlert } = useConfirm();
     const [events, setEvents] = useState<ScheduleEvent[]>([]);
     const [showAdd, setShowAdd] = useState(false);
     const [newTitle, setNewTitle] = useState('');
@@ -28,8 +30,8 @@ const ScheduleReminder: React.FC = () => {
         return events.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [filter, events, overdue, upcoming]);
 
-    const handleCreate = () => {
-        if (!newTitle.trim() || !newDate) { alert('Nhập đủ thông tin!'); return; }
+    const handleCreate = async () => {
+        if (!newTitle.trim() || !newDate) { await showAlert('Nhập đủ thông tin!', 'Thiếu thông tin', 'warning'); return; }
         scheduleService.create({
             title: newTitle.trim(),
             date: new Date(newDate).toISOString(),
@@ -139,8 +141,8 @@ const ScheduleReminder: React.FC = () => {
                         key={f}
                         onClick={() => setFilter(f)}
                         className={`px-3 py-2 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border-2 ${filter === f
-                                ? 'bg-teal-700 border-teal-700 text-white'
-                                : 'bg-white border-gray-200 text-gray-500 hover:border-teal-300'
+                            ? 'bg-teal-700 border-teal-700 text-white'
+                            : 'bg-white border-gray-200 text-gray-500 hover:border-teal-300'
                             }`}
                     >
                         {f === 'all' ? `Tất cả (${events.length})` : f === 'upcoming' ? `Sắp tới (${upcoming.length})` : `Quá hạn (${overdue.length})`}

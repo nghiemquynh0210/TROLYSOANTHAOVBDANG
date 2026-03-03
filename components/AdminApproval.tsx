@@ -4,12 +4,14 @@ import {
     Crown, Loader2, RefreshCw, Search, ArrowLeft, Trash2
 } from 'lucide-react';
 import { getAllProfiles, approveUser, rejectUser, setUserRole, deleteUserProfile, type UserProfile } from '../services/userProfileService';
+import { useConfirm } from './ConfirmProvider';
 
 interface Props {
     onBack: () => void;
 }
 
 const AdminApproval: React.FC<Props> = ({ onBack }) => {
+    const { showConfirm } = useConfirm();
     const [profiles, setProfiles] = useState<UserProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -33,7 +35,7 @@ const AdminApproval: React.FC<Props> = ({ onBack }) => {
     };
 
     const handleReject = async (userId: string) => {
-        if (!confirm('Bạn có chắc muốn từ chối/thu hồi tài khoản này?')) return;
+        if (!(await showConfirm('Bạn có chắc muốn từ chối/thu hồi tài khoản này?', 'Thu hồi tài khoản', 'warning'))) return;
         setActionLoading(userId);
         await rejectUser(userId);
         await loadProfiles();
@@ -42,7 +44,7 @@ const AdminApproval: React.FC<Props> = ({ onBack }) => {
 
     const handleToggleRole = async (userId: string, currentRole: string) => {
         const newRole = currentRole === 'admin' ? 'user' : 'admin';
-        if (newRole === 'admin' && !confirm('Cấp quyền Admin cho tài khoản này?')) return;
+        if (newRole === 'admin' && !(await showConfirm('Cấp quyền Admin cho tài khoản này?', 'Cấp quyền Admin', 'warning'))) return;
         setActionLoading(userId);
         await setUserRole(userId, newRole);
         await loadProfiles();
@@ -50,7 +52,7 @@ const AdminApproval: React.FC<Props> = ({ onBack }) => {
     };
 
     const handleDelete = async (userId: string) => {
-        if (!confirm('Xóa tài khoản này? Hành động không thể hoàn tác!')) return;
+        if (!(await showConfirm('Xóa tài khoản này? Hành động không thể hoàn tác!', 'Xóa tài khoản', 'warning'))) return;
         setActionLoading(userId);
         await deleteUserProfile(userId);
         await loadProfiles();

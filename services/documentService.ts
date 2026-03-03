@@ -13,18 +13,27 @@ export interface SavedDocument {
     updatedAt: string;
 }
 
-// ─── localStorage ──────────────────────────────────
-const DOC_STORAGE_KEY = 'saved_documents';
+// ─── localStorage (user-scoped) ────────────────────
+const BASE_KEY = 'saved_documents';
+let _userId: string | null = null;
+
+export function setDocServiceUserId(id: string | null) {
+    _userId = id;
+}
+
+function getKey(): string {
+    return _userId ? `${BASE_KEY}_${_userId}` : BASE_KEY;
+}
 
 function loadLocal(): SavedDocument[] {
     try {
-        const raw = localStorage.getItem(DOC_STORAGE_KEY);
+        const raw = localStorage.getItem(getKey());
         return raw ? JSON.parse(raw) : [];
     } catch { return []; }
 }
 
 function saveLocal(docs: SavedDocument[]) {
-    localStorage.setItem(DOC_STORAGE_KEY, JSON.stringify(docs));
+    localStorage.setItem(getKey(), JSON.stringify(docs));
 }
 
 // ─── Public API ────────────────────────────────────
@@ -69,7 +78,7 @@ export function deleteDocument(id: string): boolean {
     const filtered = docs.filter(d => d.id !== id);
     if (filtered.length === docs.length) return false;
     saveLocal(filtered);
-    // Async delete from Supabase
+    // Async delete from Supabase (user_id scoped via RLS)
     supabase.from('saved_documents').delete().eq('id', id).then(() => { });
     return true;
 }
@@ -87,8 +96,17 @@ export function generateTitle(docType: string, content: string): string {
 
 async function syncDocToSupabase(doc: SavedDocument) {
     try {
+        // Get current user ID for Supabase RLS
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id;
+        if (!userId) {
+            console.warn('syncDocToSupabase: No user logged in, skipping sync');
+            return;
+        }
+
         await supabase.from('saved_documents').upsert({
             id: doc.id,
+            user_id: userId,
             title: doc.title,
             doc_type: doc.docType,
             doc_level: doc.docLevel,

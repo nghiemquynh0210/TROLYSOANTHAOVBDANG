@@ -28,10 +28,14 @@ import AuthPage from './components/AuthPage';
 import PendingApproval from './components/PendingApproval';
 import AdminApproval from './components/AdminApproval';
 import { scheduleService } from './services/scheduleService';
-import { saveDocument, generateTitle } from './services/documentService';
+import { profileService } from './services/profileService';
+import { complianceService } from './services/complianceService';
+import { admissionService } from './services/admissionService';
+import { saveDocument, generateTitle, setDocServiceUserId, syncFromSupabase } from './services/documentService';
 import { onAuthStateChange, signOut, getSession, type AuthUser } from './services/authService';
 import { getMyProfile, type UserProfile } from './services/userProfileService';
 import { parseFile, formatFileSize, type ParsedFile } from './services/fileParserService';
+import { useConfirm } from './components/ConfirmProvider';
 import './styles/workflow.css';
 import {
   ShieldCheck,
@@ -91,6 +95,7 @@ import {
 type AppView = 'home' | 'editor' | 'profiles' | 'dashboard' | 'compliance' | 'regulations' | 'meeting' | 'comments' | 'schedule' | 'partyfee' | 'docs' | 'admin';
 
 const App: React.FC = () => {
+  const { showConfirm, showAlert } = useConfirm();
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -110,11 +115,17 @@ const App: React.FC = () => {
   const menuRef = useRef<HTMLDivElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
 
-  // Load saved admin context from localStorage
+  // Load saved admin context from localStorage (user-scoped)
+  const getAdminContextKey = (uid?: string | null) => uid ? `admin_context_${uid}` : 'admin_context';
+  const getApiKeyKey = (uid?: string | null) => uid ? `gemini_api_key_${uid}` : 'gemini_api_key';
+
   const savedCtx = (() => {
     try {
-      const raw = localStorage.getItem('admin_context');
-      return raw ? JSON.parse(raw) : null;
+      const raw = localStorage.getItem(getAdminContextKey(authUser?.id));
+      if (raw) return JSON.parse(raw);
+      // Fallback to global key for migration
+      const globalRaw = localStorage.getItem('admin_context');
+      return globalRaw ? JSON.parse(globalRaw) : null;
     } catch { return null; }
   })();
 
@@ -159,11 +170,16 @@ const App: React.FC = () => {
   }, [docLevel, auditTab, isAuditLevel]);
 
   useEffect(() => {
-    const savedApiKey = localStorage.getItem('gemini_api_key');
+    const key = getApiKeyKey(authUser?.id);
+    const savedApiKey = localStorage.getItem(key);
     if (savedApiKey) {
       setApiKey(savedApiKey);
+    } else {
+      // Fallback to global key for migration
+      const globalKey = localStorage.getItem('gemini_api_key');
+      if (globalKey) setApiKey(globalKey);
     }
-  }, []);
+  }, [authUser]);
 
   // Auth state listener
   useEffect(() => {
@@ -184,15 +200,33 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Load user profile for approval check
+  // Load user profile for approval check + initialize all services with userId
   useEffect(() => {
     if (authUser) {
+      const uid = authUser.id;
+      // Initialize all services with user ID for data isolation
+      scheduleService.setUserId(uid);
+      profileService.setUserId(uid);
+      complianceService.setUserId(uid);
+      admissionService.setUserId(uid);
+      setDocServiceUserId(uid);
+      console.log('[App] All services initialized with userId:', uid);
+
       setProfileLoading(true);
       getMyProfile().then(p => {
         setUserProfile(p);
         setProfileLoading(false);
       }).catch(() => setProfileLoading(false));
+
+      // Sync documents from Supabase
+      syncFromSupabase().catch(() => { });
     } else {
+      // Clear service user IDs on logout
+      scheduleService.setUserId(null);
+      profileService.setUserId(null);
+      complianceService.setUserId(null);
+      admissionService.setUserId(null);
+      setDocServiceUserId(null);
       setUserProfile(null);
       setProfileLoading(false);
     }
@@ -240,17 +274,17 @@ const App: React.FC = () => {
     setShowSampleMenu(false);
   };
 
-  const handleSaveApiKey = () => {
+  const handleSaveApiKey = async () => {
     if (apiKey.trim()) {
-      localStorage.setItem('gemini_api_key', apiKey.trim());
+      localStorage.setItem(getApiKeyKey(authUser?.id), apiKey.trim());
       setConnectionStatus('idle');
-      alert('API Key đã được lưu thành công!');
+      await showAlert('API Key đã được lưu thành công!', 'Thành công', 'success');
     }
   };
 
   const handleTestConnection = async () => {
     if (!apiKey.trim()) {
-      alert('Vui lòng nhập API Key trước khi test!');
+      await showAlert('Vui lòng nhập API Key trước khi test!', 'Thiếu API Key', 'warning');
       return;
     }
 
@@ -518,7 +552,7 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
               <Settings className="w-5 h-5" />
             </button>
             <button
-              onClick={() => { if (confirm('Đăng xuất?')) signOut(); }}
+              onClick={async () => { if (await showConfirm('Bạn có chắc chắn muốn đăng xuất?', 'Đăng xuất', 'warning')) signOut(); }}
               className="bg-white/10 hover:bg-red-500/80 p-2.5 rounded-xl backdrop-blur-md shadow-inner transition-all active:scale-95"
               title="Đăng xuất"
             >
@@ -648,15 +682,15 @@ Người dùng bổ sung nhận xét mới nhất tại đây: ...`;
                         </h3>
                         <div className="space-y-1">
                           <label className="text-[8px] font-bold text-gray-400 uppercase">Đảng bộ cấp trên</label>
-                          <input type="text" placeholder="VD: ĐẢNG BỘ PHƯỜNG AN PHÚ" className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-[10px] font-bold outline-none shadow-sm focus:ring-2 focus:ring-blue-200 uppercase" value={metadata.superiorParty} onChange={e => { const v = e.target.value; setMetadata(prev => { const next = { ...prev, superiorParty: v }; try { localStorage.setItem('admin_context', JSON.stringify({ superiorParty: next.superiorParty, branchName: next.branchName, locationDate: next.locationDate })); } catch { } return next; }); }} />
+                          <input type="text" placeholder="VD: ĐẢNG BỘ PHƯỜNG AN PHÚ" className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-[10px] font-bold outline-none shadow-sm focus:ring-2 focus:ring-blue-200 uppercase" value={metadata.superiorParty} onChange={e => { const v = e.target.value; setMetadata(prev => { const next = { ...prev, superiorParty: v }; try { localStorage.setItem(getAdminContextKey(authUser?.id), JSON.stringify({ superiorParty: next.superiorParty, branchName: next.branchName, locationDate: next.locationDate })); } catch { } return next; }); }} />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[8px] font-bold text-gray-400 uppercase">Chi bộ</label>
-                          <input type="text" placeholder="VD: CHI BỘ KHU PHỐ 3" className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-[10px] font-bold outline-none shadow-sm focus:ring-2 focus:ring-blue-200 uppercase" value={metadata.branchName} onChange={e => { const v = e.target.value; setMetadata(prev => { const next = { ...prev, branchName: v }; try { localStorage.setItem('admin_context', JSON.stringify({ superiorParty: next.superiorParty, branchName: next.branchName, locationDate: next.locationDate })); } catch { } return next; }); }} />
+                          <input type="text" placeholder="VD: CHI BỘ KHU PHỐ 3" className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-[10px] font-bold outline-none shadow-sm focus:ring-2 focus:ring-blue-200 uppercase" value={metadata.branchName} onChange={e => { const v = e.target.value; setMetadata(prev => { const next = { ...prev, branchName: v }; try { localStorage.setItem(getAdminContextKey(authUser?.id), JSON.stringify({ superiorParty: next.superiorParty, branchName: next.branchName, locationDate: next.locationDate })); } catch { } return next; }); }} />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[8px] font-bold text-gray-400 uppercase">Ngày tháng, địa danh</label>
-                          <input type="text" placeholder="VD: An Phú, ngày 03 tháng 02 năm 2026" className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-[10px] font-bold outline-none shadow-sm focus:ring-2 focus:ring-blue-200" value={metadata.locationDate} onChange={e => { const v = e.target.value; setMetadata(prev => { const next = { ...prev, locationDate: v }; try { localStorage.setItem('admin_context', JSON.stringify({ superiorParty: next.superiorParty, branchName: next.branchName, locationDate: next.locationDate })); } catch { } return next; }); }} />
+                          <input type="text" placeholder="VD: An Phú, ngày 03 tháng 02 năm 2026" className="w-full p-2.5 bg-white border border-gray-200 rounded-lg text-[10px] font-bold outline-none shadow-sm focus:ring-2 focus:ring-blue-200" value={metadata.locationDate} onChange={e => { const v = e.target.value; setMetadata(prev => { const next = { ...prev, locationDate: v }; try { localStorage.setItem(getAdminContextKey(authUser?.id), JSON.stringify({ superiorParty: next.superiorParty, branchName: next.branchName, locationDate: next.locationDate })); } catch { } return next; }); }} />
                         </div>
                       </div>
                     </div>

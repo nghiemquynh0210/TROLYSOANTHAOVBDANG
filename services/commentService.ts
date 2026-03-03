@@ -47,7 +47,18 @@ export const transformComment = async (
     rawText: string,
     type: CommentType
 ): Promise<string> => {
-    const apiKey = localStorage.getItem('gemini_api_key');
+    // Get API key: try user-scoped keys first, then global fallback
+    const { supabase } = await import('./supabaseClient');
+    let apiKey: string | null = null;
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user?.id) {
+            apiKey = localStorage.getItem(`gemini_api_key_${user.id}`);
+        }
+    } catch { }
+    if (!apiKey) {
+        apiKey = localStorage.getItem('gemini_api_key');
+    }
     if (!apiKey) {
         throw new Error('API Key chưa được cấu hình. Vui lòng vào Cài đặt để nhập API Key.');
     }

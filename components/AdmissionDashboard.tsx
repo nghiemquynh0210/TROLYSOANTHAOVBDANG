@@ -10,6 +10,7 @@ import {
     ChevronRight, Search, Trash2, History, X, FileText, ClipboardList,
     ChevronDown, UserPlus, CheckCircle2, FilePlus2, LayoutGrid, GitBranch
 } from 'lucide-react';
+import { useConfirm } from './ConfirmProvider';
 
 // ─── Template mapping per step ───────────────────────
 interface FormTemplate {
@@ -156,6 +157,7 @@ interface Props {
 
 // ─── Main Component ──────────────────────────────────
 const AdmissionDashboard: React.FC<Props> = ({ onDraftFromProfile }) => {
+    const { showConfirm } = useConfirm();
     const [viewMode, setViewMode] = useState<'kanban' | 'workflow'>('kanban');
     const [trackingList, setTrackingList] = useState<AdmissionTracking[]>([]);
     const [profilesMap, setProfilesMap] = useState<Record<string, MemberProfile>>({});
@@ -200,8 +202,8 @@ const AdmissionDashboard: React.FC<Props> = ({ onDraftFromProfile }) => {
         loadData();
     };
 
-    const handleRemove = (profileId: string, name: string) => {
-        if (confirm(`Xóa "${name}" khỏi lộ trình theo dõi?`)) {
+    const handleRemove = async (profileId: string, name: string) => {
+        if (await showConfirm(`Xóa "${name}" khỏi lộ trình theo dõi?`, 'Xóa khỏi lộ trình', 'warning')) {
             admissionService.remove(profileId);
             loadData();
         }

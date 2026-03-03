@@ -11,7 +11,7 @@ export interface ScheduleEvent {
     createdAt: string;
 }
 
-const STORAGE_KEY = 'schedule_events';
+const BASE_KEY = 'schedule_events';
 const generateId = (): string => Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
 const TYPE_LABELS: Record<string, string> = {
@@ -23,10 +23,21 @@ const TYPE_LABELS: Record<string, string> = {
 
 export { TYPE_LABELS };
 
+/** Helper: get storage key scoped to user */
+function getKey(userId?: string | null): string {
+    return userId ? `${BASE_KEY}_${userId}` : BASE_KEY;
+}
+
 export const scheduleService = {
+    _userId: null as string | null,
+
+    setUserId(id: string | null) {
+        this._userId = id;
+    },
+
     getAll(): ScheduleEvent[] {
         try {
-            const data = localStorage.getItem(STORAGE_KEY);
+            const data = localStorage.getItem(getKey(this._userId));
             let events: ScheduleEvent[] = data ? JSON.parse(data) : [];
             if (events.length === 0) {
                 events = this._createDefaults();
@@ -44,7 +55,7 @@ export const scheduleService = {
             createdAt: new Date().toISOString()
         };
         events.push(newEvent);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(events));
         return newEvent;
     },
 
@@ -53,7 +64,7 @@ export const scheduleService = {
         const idx = events.findIndex(e => e.id === id);
         if (idx === -1) return false;
         events[idx].completed = !events[idx].completed;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(events));
         return true;
     },
 
@@ -61,7 +72,7 @@ export const scheduleService = {
         const events = this.getAll();
         const filtered = events.filter(e => e.id !== id);
         if (filtered.length === events.length) return false;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(filtered));
         return true;
     },
 
@@ -124,7 +135,7 @@ export const scheduleService = {
             }
         ];
 
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(defaults));
+        localStorage.setItem(getKey(this._userId), JSON.stringify(defaults));
         return defaults;
     }
 };

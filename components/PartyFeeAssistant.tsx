@@ -15,9 +15,12 @@ import {
 import * as XLSX from 'xlsx';
 import {
     fetchMembers as fetchDbMembers, syncAllMembers,
-    upsertMember, deleteMember as deleteDbMember,
+    upsertMember, deleteMember as deleteDbMember, deleteAllMembers,
     recordPayment, fetchPayments, dbToAppMember, appToDbMember
 } from '../services/paymentService';
+import {
+    fetchPartySettings, upsertPartySettings, PartySettings
+} from '../services/partySettingsService';
 import { checkPaymentsForMonth, MatchResult } from '../services/sepayService';
 import { Search, Landmark, RefreshCw } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
@@ -37,18 +40,20 @@ interface PartyMember {
     paid: boolean;        // Trạng thái đã nộp đảng phí
 }
 
-type TabMode = 'calculator' | 'memberlist' | 'report';
+type TabMode = 'calculator' | 'memberlist' | 'report' | 'settings';
 
 // ─── localStorage helpers ────────────────────────────
 const STORAGE_KEY = 'party_fee_members';
-function loadMembers(): PartyMember[] {
+function loadMembers(userId?: string): PartyMember[] {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
+        const key = userId ? `${STORAGE_KEY}_${userId}` : STORAGE_KEY;
+        const raw = localStorage.getItem(key);
         return raw ? JSON.parse(raw) : [];
     } catch { return []; }
 }
-function saveMembers(list: PartyMember[]) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+function saveMembers(list: PartyMember[], userId?: string) {
+    const key = userId ? `${STORAGE_KEY}_${userId}` : STORAGE_KEY;
+    localStorage.setItem(key, JSON.stringify(list));
 }
 
 // ─── Excel paste parser ──────────────────────────────
@@ -123,8 +128,19 @@ const PartyFeeAssistant: React.FC = () => {
     const [showTextReport, setShowTextReport] = useState(false);
 
     // Member list state
-    const [members, setMembers] = useState<PartyMember[]>(loadMembers);
+    const [members, setMembers] = useState<PartyMember[]>([]);
     const [supabaseSynced, setSupabaseSynced] = useState(false);
+
+    // Settings state
+    const [settings, setSettings] = useState<PartySettings>({
+        branch_name: '',
+        superior_party: '',
+        bank_name: 'MB Bank',
+        bank_account_number: '',
+        account_holder_name: ''
+    });
+    const [settingsLoading, setSettingsLoading] = useState(false);
+    const [settingsSaved, setSettingsSaved] = useState(false);
     const [pasteText, setPasteText] = useState('');
     const [showPasteArea, setShowPasteArea] = useState(false);
     const [defaultRegion, setDefaultRegion] = useState('Vùng I');
@@ -145,8 +161,9 @@ const PartyFeeAssistant: React.FC = () => {
     const [paymentsLoading, setPaymentsLoading] = useState(false);
 
     // Editable minimum wage state
+    const [userId, setUserId] = useState<string | null>(null);
     const [showWageSettings, setShowWageSettings] = useState(false);
-    const [editWages, setEditWages] = useState<Record<string, number>>(getMinimumWages);
+    const [editWages, setEditWages] = useState<Record<string, number>>(DEFAULT_MINIMUM_WAGES);
     const [wagesSaved, setWagesSaved] = useState(false);
 
     // Custom confirm modal state
@@ -274,33 +291,61 @@ const PartyFeeAssistant: React.FC = () => {
 
     const persistMembers = useCallback((list: PartyMember[]) => {
         setMembers(list);
-        saveMembers(list);
+        saveMembers(list, userId || undefined);
         // Async sync to Supabase
         syncAllMembers(list.map(appToDbMember)).then(ok => {
             if (ok) setSupabaseSynced(true);
         });
-    }, []);
+    }, [userId]);
 
-    // Load from Supabase on mount
+    // Load data from Supabase on mount
     useEffect(() => {
-        fetchDbMembers().then(dbList => {
-            if (dbList.length > 0) {
-                const appList = dbList.map(dbToAppMember) as PartyMember[];
-                setMembers(appList);
-                saveMembers(appList);
-                setSupabaseSynced(true);
-            } else {
-                // If Supabase is empty but localStorage has data, push to Supabase
-                const local = loadMembers();
-                if (local.length > 0) {
-                    syncAllMembers(local.map(appToDbMember)).then(ok => {
-                        if (ok) setSupabaseSynced(true);
-                    });
+        const initData = async () => {
+            setSettingsLoading(true);
+            try {
+                // Get current user ID for storage scoping
+                const { supabase } = await import('../services/supabaseClient');
+                const { data: { user } } = await supabase.auth.getUser();
+                const currentId = user?.id || null;
+                setUserId(currentId);
+
+                // Initialize wages with per-user settings
+                setEditWages(getMinimumWages(currentId || undefined));
+
+                // Fetch members
+                const dbList = await fetchDbMembers();
+                if (dbList.length > 0) {
+                    const appList = dbList.map(dbToAppMember) as PartyMember[];
+                    setMembers(appList);
+                    saveMembers(appList, currentId || undefined);
+                    setSupabaseSynced(true);
+                } else if (currentId) {
+                    // Try to load from user-specific localStorage as fallback
+                    const local = loadMembers(currentId);
+                    if (local.length > 0) {
+                        setMembers(local);
+                        syncAllMembers(local.map(appToDbMember)).then(ok => {
+                            if (ok) setSupabaseSynced(true);
+                        });
+                    } else {
+                        // Truly new user: check global legacy storage (optional migration path)
+                        // If we want a clean slate for brand new accounts, we SHOULD NOT 
+                        // pull from global 'party_fee_members' if it belongs to someone else.
+                        // However, to help the very first migration, we check if global exists.
+                        // CRITICAL: For "Tài khoản mới hoàn toàn mới", we ensure it's empty.
+                        setMembers([]);
+                    }
                 }
+
+                // Fetch settings
+                const dbSettings = await fetchPartySettings();
+                if (dbSettings) setSettings(dbSettings);
+            } catch (err) {
+                console.warn('Supabase data fetch failed:', err);
             }
-        }).catch(() => {
-            console.warn('Supabase unavailable, using localStorage');
-        });
+            setSettingsLoading(false);
+        };
+        initData();
     }, []);
 
     const handlePasteImport = useCallback(() => {
@@ -367,9 +412,49 @@ const PartyFeeAssistant: React.FC = () => {
         deleteDbMember(id); // Remove from Supabase too
     }, [members, persistMembers]);
 
-    const clearAll = useCallback(() => {
-        persistMembers([]);
-    }, [persistMembers]);
+    const clearAll = useCallback(async () => {
+        const confirmed = await showConfirm(
+            `Bạn có chắc chắn muốn XÓA TẤT CẢ ${members.length} đảng viên khỏi danh sách? Hành động này không thể hoàn tác!`,
+            'Xóa tất cả đảng viên',
+            'warning'
+        );
+        if (!confirmed) return;
+
+        try {
+            // Step 1: Delete from Supabase FIRST
+            console.log('[clearAll] Deleting all members from Supabase...');
+            const dbDeleteOk = await deleteAllMembers();
+
+            if (!dbDeleteOk) {
+                console.error('[clearAll] Supabase delete failed!');
+                await showConfirm(
+                    'Không thể xóa dữ liệu trên server. Vui lòng thử lại hoặc kiểm tra kết nối mạng.',
+                    'Lỗi xóa dữ liệu',
+                    'warning'
+                );
+                return; // Don't clear local state if server delete failed
+            }
+
+            // Step 2: Clear local state ONLY after Supabase confirms deletion
+            console.log('[clearAll] Supabase delete successful, clearing local state...');
+            setMembers([]);
+
+            // Step 3: Clear ALL localStorage keys
+            if (userId) {
+                localStorage.removeItem(`${STORAGE_KEY}_${userId}`);
+            }
+            localStorage.removeItem(STORAGE_KEY); // Clear global legacy key too
+
+            console.log('[clearAll] All members deleted successfully');
+        } catch (err) {
+            console.error('[clearAll] Exception:', err);
+            await showConfirm(
+                'Đã xảy ra lỗi khi xóa dữ liệu. Vui lòng thử lại.',
+                'Lỗi',
+                'warning'
+            );
+        }
+    }, [members.length, userId, showConfirm]);
 
     // ─── Member list summary ─────────────────
     const memberSummary = useMemo(() => {
@@ -457,11 +542,11 @@ const PartyFeeAssistant: React.FC = () => {
                                 )}
                             </button>
                             <button
-                                onClick={() => setTabMode('report')}
-                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${tabMode === 'report' ? 'bg-white/25 text-white shadow-sm' : 'text-white/60 hover:text-white/90'
+                                onClick={() => setTabMode('settings')}
+                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${tabMode === 'settings' ? 'bg-white/25 text-white shadow-sm' : 'text-white/60 hover:text-white/90'
                                     }`}
                             >
-                                <Table2 className="w-3.5 h-3.5" /> Báo cáo
+                                <Settings className="w-3.5 h-3.5" /> Thiết lập
                             </button>
                         </div>
                         <button
@@ -876,7 +961,7 @@ const PartyFeeAssistant: React.FC = () => {
                                 <div className="flex items-center gap-2 pt-1">
                                     <button
                                         onClick={() => {
-                                            setMinimumWages(editWages);
+                                            setMinimumWages(editWages, userId || undefined);
                                             setWagesSaved(true);
                                             setTimeout(() => setWagesSaved(false), 2000);
                                             // Force re-render members to recalculate fees
@@ -892,7 +977,7 @@ const PartyFeeAssistant: React.FC = () => {
                                     <button
                                         onClick={() => {
                                             setEditWages({ ...DEFAULT_MINIMUM_WAGES });
-                                            setMinimumWages({ ...DEFAULT_MINIMUM_WAGES });
+                                            setMinimumWages({ ...DEFAULT_MINIMUM_WAGES }, userId || undefined);
                                             setMembers(prev => prev.map(m => {
                                                 const fee = calculatePartyFee(m.memberType, { salary: m.salary });
                                                 return { ...m, feeAmount: fee.amount };
@@ -1227,8 +1312,8 @@ const PartyFeeAssistant: React.FC = () => {
                                         /* ── Build worksheet data ── */
                                         const wsData: (string | number | null)[][] = [
                                             /* Row 0: Header left */
-                                            ['ĐẢNG BỘ PHƯỜNG ……………', null, null, null, null, null, 'ĐẢNG CỘNG SẢN VIỆT NAM'],
-                                            ['CHI BỘ ……………', null, null, null, null, null, `……………, ngày …… tháng ${mm} năm ${reportYear}`],
+                                            [settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………', null, null, null, null, null, 'ĐẢNG CỘNG SẢN VIỆT NAM'],
+                                            [settings.branch_name || 'CHI BỘ ……………', null, null, null, null, null, `……………, ngày …… tháng ${mm} năm ${reportYear}`],
                                             ['*'],
                                             [],
                                             /* Row 3-4: Title */
@@ -1327,7 +1412,7 @@ const PartyFeeAssistant: React.FC = () => {
                             const typeRows = typeStats.map((s, i) =>
                                 `${i + 1}. ${s.label}: ${s.count} đồng chí — Tổng đảng phí: ${s.totalFee.toLocaleString('vi-VN')}đ/tháng`
                             ).join('\n');
-                            return `ĐẢNG BỘ PHƯỜNG ……………                    ĐẢNG CỘNG SẢN VIỆT NAM\nCHI BỘ ……………\n                                              ……………, ngày …… tháng ${String(reportMonth).padStart(2, '0')} năm ${reportYear}\n\nBÁO CÁO\nVề tình hình thực hiện đóng đảng phí theo Quy định số 01-QĐ/TW\nngày 03/02/2026 của Bộ Chính trị\n(Tháng ${String(reportMonth).padStart(2, '0')} năm ${reportYear})\n-----\n\nKính gửi: Đảng ủy phường ……………\n\nThực hiện Quy định số 01-QĐ/TW ngày 03/02/2026 của Bộ Chính trị về chế độ đảng phí (có hiệu lực từ ngày 01/02/2026), Chi bộ …………… xin báo cáo tình hình triển khai thực hiện như sau:\n\nI. THỐNG KÊ TÌNH HÌNH THỰC HIỆN ĐÓNG ĐẢNG PHÍ\n\n1. Tổng số đảng viên chi bộ: ${totalMembers} đồng chí\n   - Đã hoàn thành nghĩa vụ đảng phí: ${paidCount} đồng chí (${totalMembers > 0 ? Math.round(paidCount / totalMembers * 100) : 0}%)\n   - Được miễn đóng đảng phí: ${exemptCount} đồng chí\n\n2. Thống kê theo nhóm đối tượng:\n${typeRows}\n\nTỔNG ĐẢNG PHÍ THU ĐƯỢC KỲ BÁO CÁO: ${totalFee.toLocaleString('vi-VN')}đ\n\nII. TÌNH HÌNH TRÍCH NỘP\n\n- Tổng đảng phí đã thu kỳ báo cáo (mã 02): ${totalFee.toLocaleString('vi-VN')}đ\n- Trích giữ lại chi bộ ${RETENTION_RATES.chiBoGiu}% (mã 04): ${chiBoGiu.toLocaleString('vi-VN')}đ\n- Nộp cấp trên ${RETENTION_RATES.nopCapTren}% (mã 12): ${nopCapTren.toLocaleString('vi-VN')}đ\n- Lũy kế từ đầu năm (mã 03): ${(totalFee * reportMonth).toLocaleString('vi-VN')}đ\n\nIII. ĐÁNH GIÁ VIỆC ÁP DỤNG CÔNG NGHỆ SỐ\n\n- Tỷ lệ sử dụng Sổ tay đảng viên điện tử: ……%\n- Tỷ lệ đăng ký Cổng Dịch vụ công Quốc gia: ……%\n\nIV. KHÓ KHĂN, VƯỚNG MẮC VÀ KIẾN NGHỊ\n\n1. Khó khăn: (nêu cụ thể)\n2. Kiến nghị: (nêu cụ thể)\n\nV. CAM KẾT THỰC HIỆN NGUYÊN TẮC \"3Đ\"\n\n- ĐÚNG mức đóng theo QĐ 01-QĐ/TW\n- ĐỦ số lượng đảng viên (${totalMembers}/${totalMembers} = ${complianceRate}%)\n- ĐỀU đặn thu nộp hàng tháng, đúng hạn\n\nTrên đây là báo cáo tình hình thực hiện đóng đảng phí. Kính đề nghị Đảng ủy phường xem xét, chỉ đạo./.\n\nNơi nhận:                                          T/M CHI BỘ\n- Đảng ủy phường (báo cáo);                           BÍ THƯ\n- Ban chi ủy;\n- Lưu Chi bộ.`;
+                            return `${settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………'}                    ĐẢNG CỘNG SẢN VIỆT NAM\n${settings.branch_name || 'CHI BỘ ……………'}\n                                              ……………, ngày …… tháng ${String(reportMonth).padStart(2, '0')} năm ${reportYear}\n\nBÁO CÁO\nVề tình hình thực hiện đóng đảng phí theo Quy định số 01-QĐ/TW\nngày 03/02/2026 của Bộ Chính trị\n(Tháng ${String(reportMonth).padStart(2, '0')} năm ${reportYear})\n-----\n\nKính gửi: Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường ……………'}\n\nThực hiện Quy định số 01-QĐ/TW ngày 03/02/2026 của Bộ Chính trị về chế độ đảng phí (có hiệu lực từ ngày 01/02/2026), ${settings.branch_name || 'Chi bộ ……………'} xin báo cáo tình hình triển khai thực hiện như sau:\n\nI. THỐNG KÊ TÌNH HÌNH THỰC HIỆN ĐÓNG ĐẢNG PHÍ\n\n1. Tổng số đảng viên chi bộ: ${totalMembers} đồng chí\n   - Đã hoàn thành nghĩa vụ đảng phí: ${paidCount} đồng chí (${totalMembers > 0 ? Math.round(paidCount / totalMembers * 100) : 0}%)\n   - Được miễn đóng đảng phí: ${exemptCount} đồng chí\n\n2. Thống kê theo nhóm đối tượng:\n${typeRows}\n\nTỔNG ĐẢNG PHÍ THU ĐƯỢC KỲ BÁO CÁO: ${totalFee.toLocaleString('vi-VN')}đ\n\nII. TÌNH HÌNH TRÍCH NỘP\n\n- Tổng đảng phí đã thu kỳ báo cáo (mã 02): ${totalFee.toLocaleString('vi-VN')}đ\n- Trích giữ lại chi bộ ${RETENTION_RATES.chiBoGiu}% (mã 04): ${chiBoGiu.toLocaleString('vi-VN')}đ\n- Nộp cấp trên ${RETENTION_RATES.nopCapTren}% (mã 12): ${nopCapTren.toLocaleString('vi-VN')}đ\n- Lũy kế từ đầu năm (mã 03): ${(totalFee * reportMonth).toLocaleString('vi-VN')}đ\n\nIII. ĐÁNH GIÁ VIỆC ÁP DỤNG CÔNG NGHỆ SỐ\n\n- Tỷ lệ sử dụng Sổ tay đảng viên điện tử: ……%\n- Tỷ lệ đăng ký Cổng Dịch vụ công Quốc gia: ……%\n\nIV. KHÓ KHĂN, VƯỚNG MẮC VÀ KIẾN NGHỊ\n\n1. Khó khăn: (nêu cụ thể)\n2. Kiến nghị: (nêu cụ thể)\n\nV. CAM KẾT THỰC HIỆN NGUYÊN TẮC \"3Đ\"\n\n- ĐÚNG mức đóng theo QĐ 01-QĐ/TW\n- ĐỦ số lượng đảng viên (${totalMembers}/${totalMembers} = ${complianceRate}%)\n- ĐỀU đặn thu nộp hàng tháng, đúng hạn\n\nTrên đây là báo cáo tình hình thực hiện đóng đảng phí. Kính đề nghị Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường'} xem xét, chỉ đạo./.\n\nNơi nhận:                                          T/M ${settings.branch_name?.split(' ')[0] || 'CHI BỘ'}\n- Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường'} (báo cáo);                           BÍ THƯ\n- Ban chi ủy;\n- Lưu Chi bộ.`;
                         };
 
                         const handleCopyReport = () => {
@@ -1470,8 +1555,8 @@ const PartyFeeAssistant: React.FC = () => {
                                 <div className="p-6 text-center space-y-1 print:py-4">
                                     <div className="flex justify-between items-start px-4">
                                         <div className="text-left">
-                                            <p className="text-xs font-bold">ĐẢNG BỘ PHƯỜNG ……………</p>
-                                            <p className="text-sm font-black">CHI BỘ ……………</p>
+                                            <p className="text-xs font-bold">{settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………'}</p>
+                                            <p className="text-sm font-black">{settings.branch_name || 'CHI BỘ ……………'}</p>
                                             <p className="text-xs">*</p>
                                         </div>
                                         <div className="text-right">
@@ -1692,12 +1777,128 @@ const PartyFeeAssistant: React.FC = () => {
                         </>);
                     })()}
 
-                    {members.length === 0 && (
-                        <div className="bg-yellow-50 border-2 border-yellow-200 rounded-xl p-4 flex items-center gap-2 text-xs text-yellow-700">
-                            <AlertTriangle className="w-4 h-4" />
-                            Chưa có danh sách đảng viên. Vui lòng vào tab <strong className="mx-1">"Danh sách ĐV"</strong> để nhập trước khi xuất báo cáo.
+                </div>
+            )}
+
+            {/* ─── SETTINGS TAB ──────────────────────────── */}
+            {tabMode === 'settings' && (
+                <div className="space-y-6">
+                    <div className="bg-white border-2 border-amber-200 rounded-2xl p-6">
+                        <div className="flex items-center gap-3 mb-6">
+                            <div className="bg-amber-100 p-2 rounded-xl">
+                                <Settings className="w-5 h-5 text-amber-600" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-black text-gray-800 uppercase tracking-wider">Cấu hình Chi bộ & Ngân hàng</h3>
+                                <p className="text-[10px] text-gray-500">Thông tin này dùng để xuất báo cáo và tạo mã QR đóng đảng phí</p>
+                            </div>
                         </div>
-                    )}
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {/* Branch Settings */}
+                            <div className="space-y-4">
+                                <h4 className="text-xs font-bold text-amber-700 uppercase tracking-widest border-b border-amber-100 pb-2">Thông tin tổ chức</h4>
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tên Chi bộ</label>
+                                        <input
+                                            type="text"
+                                            value={settings.branch_name}
+                                            onChange={e => setSettings({ ...settings, branch_name: e.target.value })}
+                                            placeholder="Ví dụ: CHI BỘ 1"
+                                            className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all font-bold"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Đảng bộ cấp trên</label>
+                                        <input
+                                            type="text"
+                                            value={settings.superior_party}
+                                            onChange={e => setSettings({ ...settings, superior_party: e.target.value })}
+                                            placeholder="Ví dụ: ĐẢNG BỘ PHƯỜNG THUẬN AN"
+                                            className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all font-bold"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Bank Settings */}
+                            <div className="space-y-4">
+                                <h4 className="text-xs font-bold text-amber-700 uppercase tracking-widest border-b border-amber-100 pb-2">Tài khoản nhận Đảng phí</h4>
+                                <div className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Ngân hàng (VietQR ID)</label>
+                                            <input
+                                                type="text"
+                                                value={settings.bank_name}
+                                                onChange={e => setSettings({ ...settings, bank_name: e.target.value })}
+                                                placeholder="Ví dụ: MB, VCB, ICB"
+                                                className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all font-bold"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Số tài khoản</label>
+                                            <input
+                                                type="text"
+                                                value={settings.bank_account_number}
+                                                onChange={e => setSettings({ ...settings, bank_account_number: e.target.value })}
+                                                className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs font-mono focus:border-amber-400 focus:ring-0 transition-all font-bold"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Chủ tài khoản (Tiếng Việt không dấu)</label>
+                                        <input
+                                            type="text"
+                                            value={settings.account_holder_name}
+                                            onChange={e => setSettings({ ...settings, account_holder_name: e.target.value })}
+                                            placeholder="Ví dụ: NGUYEN VAN A"
+                                            className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all uppercase font-bold"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                {settingsSaved && (
+                                    <span className="text-xs font-bold text-green-600 flex items-center gap-1 animate-pulse">
+                                        <CheckCircle2 className="w-4 h-4" /> Đã lưu thành công!
+                                    </span>
+                                )}
+                            </div>
+                            <button
+                                onClick={async () => {
+                                    setSettingsLoading(true);
+                                    const success = await upsertPartySettings(settings);
+                                    if (success) {
+                                        setSettingsSaved(true);
+                                        setTimeout(() => setSettingsSaved(false), 3000);
+                                    }
+                                    setSettingsLoading(false);
+                                }}
+                                disabled={settingsLoading}
+                                className="px-6 py-2 bg-amber-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-amber-700 disabled:opacity-50 transition-all shadow-md flex items-center gap-2"
+                            >
+                                {settingsLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Landmark className="w-4 h-4" />}
+                                Lưu cấu hình
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl p-4 flex items-start gap-3">
+                        <Info className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                        <div className="text-[10px] text-blue-700 leading-relaxed">
+                            <p className="font-bold uppercase mb-1 underline">Lưu ý quan trọng:</p>
+                            <ul className="list-disc pl-4 space-y-1">
+                                <li><strong>Mã ngân hàng:</strong> Sử dụng mã định danh VietQR (Ví dụ: MB Bank = <code>MB</code>, Vietcombank = <code>VCB</code>, Agribank = <code>VBA</code>, ICB, v.v.).</li>
+                                <li><strong>Tính riêng tư:</strong> Thông tin này là riêng biệt cho từng tài khoản chi bộ.</li>
+                                <li><strong>Mã QR:</strong> Sau khi lưu, mã QR đóng đảng phí sẽ tự động cập nhật theo số tài khoản này.</li>
+                            </ul>
+                        </div>
+                    </div>
                 </div>
             )}
 
@@ -1812,7 +2013,7 @@ const PartyFeeAssistant: React.FC = () => {
                         {/* Footer */}
                         <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex-shrink-0">
                             <div className="flex items-center justify-between">
-                                <p className="text-[10px] text-gray-400">Nguồn: SePay.vn • TK: {BANK_CONFIG.accountNo}</p>
+                                <p className="text-[10px] text-gray-400">Nguồn: SePay.vn • TK: {settings.bank_account_number || BANK_CONFIG.accountNo}</p>
                                 <button
                                     onClick={() => setShowSepayModal(false)}
                                     className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
@@ -1854,7 +2055,11 @@ const PartyFeeAssistant: React.FC = () => {
                         <div className="px-5 py-3 flex justify-center">
                             {qrMember.feeAmount > 0 ? (
                                 <img
-                                    src={getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear)}
+                                    src={getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear, {
+                                        bankId: settings.bank_name,
+                                        accountNo: settings.bank_account_number,
+                                        accountName: settings.account_holder_name
+                                    })}
                                     alt={`QR thanh toán ${qrMember.hoTen}`}
                                     className="w-64 h-64 object-contain rounded-lg border border-gray-100"
                                 />
@@ -1871,9 +2076,9 @@ const PartyFeeAssistant: React.FC = () => {
                         {/* Bank info */}
                         <div className="px-5 pb-3">
                             <div className="bg-gray-50 rounded-lg px-3 py-2 space-y-1 text-xs text-gray-600">
-                                <div className="flex justify-between"><span>Ngân hàng:</span><span className="font-bold">{BANK_CONFIG.bankId} - {BANK_CONFIG.branchName || 'PGD Thuận An'}</span></div>
-                                <div className="flex justify-between"><span>Số TK:</span><span className="font-bold font-mono">{BANK_CONFIG.accountNo}</span></div>
-                                <div className="flex justify-between"><span>Tên TK:</span><span className="font-bold">{BANK_CONFIG.accountName}</span></div>
+                                <div className="flex justify-between"><span>Ngân hàng:</span><span className="font-bold">{settings.bank_name || BANK_CONFIG.bankId}</span></div>
+                                <div className="flex justify-between"><span>Số TK:</span><span className="font-bold font-mono">{settings.bank_account_number || BANK_CONFIG.accountNo}</span></div>
+                                <div className="flex justify-between"><span>Tên TK:</span><span className="font-bold">{settings.account_holder_name || BANK_CONFIG.accountName}</span></div>
                                 <div className="flex justify-between"><span>Nội dung CK:</span><span className="font-bold text-blue-600">DP T{String(selectedMonth).padStart(2, '0')}/{selectedYear} {qrMember.hoTen}</span></div>
                             </div>
                         </div>
@@ -1882,7 +2087,11 @@ const PartyFeeAssistant: React.FC = () => {
                         <div className="px-5 pb-5 grid grid-cols-3 gap-2">
                             <button
                                 onClick={() => {
-                                    const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear);
+                                    const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear, {
+                                        bankId: settings.bank_name,
+                                        accountNo: settings.bank_account_number,
+                                        accountName: settings.account_holder_name
+                                    });
                                     const a = document.createElement('a');
                                     a.href = url;
                                     a.download = `QR_${qrMember.hoTen.replace(/\s/g, '_')}_T${String(selectedMonth).padStart(2, '0')}_${selectedYear}.png`;
@@ -1896,7 +2105,11 @@ const PartyFeeAssistant: React.FC = () => {
                             </button>
                             <button
                                 onClick={() => {
-                                    const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear);
+                                    const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear, {
+                                        bankId: settings.bank_name,
+                                        accountNo: settings.bank_account_number,
+                                        accountName: settings.account_holder_name
+                                    });
                                     navigator.clipboard.writeText(url);
                                 }}
                                 className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors text-blue-600"

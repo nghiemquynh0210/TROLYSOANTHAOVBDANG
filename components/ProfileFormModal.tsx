@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { MemberProfile } from '../types';
 import { X, Save, User } from 'lucide-react';
+import { useConfirm } from './ConfirmProvider';
 
 interface Props {
     isOpen: boolean;
@@ -20,6 +21,7 @@ const EMPTY_FORM: Omit<MemberProfile, 'id' | 'createdAt' | 'updatedAt'> = {
 
 const ProfileFormModal: React.FC<Props> = ({ isOpen, onClose, onSave, profile }) => {
     const [form, setForm] = useState(EMPTY_FORM);
+    const { showAlert } = useConfirm();
 
     useEffect(() => {
         if (profile) {
@@ -36,10 +38,10 @@ const ProfileFormModal: React.FC<Props> = ({ isOpen, onClose, onSave, profile })
         setForm(prev => ({ ...prev, [key]: value }));
     };
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!form.fullName.trim()) {
-            alert('Vui lòng nhập Họ và tên!');
+            await showAlert('Vui lòng nhập Họ và tên!', 'Thiếu thông tin', 'warning');
             return;
         }
         onSave(form);
