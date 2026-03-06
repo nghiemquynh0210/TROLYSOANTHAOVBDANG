@@ -78,6 +78,7 @@ ALTER TABLE saved_documents ENABLE ROW LEVEL SECURITY;
 ALTER TABLE party_settings ENABLE ROW LEVEL SECURITY;
 
 -- 6. Policies (Users only see their own data AND must be approved)
+DROP POLICY IF EXISTS "Allow all for approved authenticated" ON party_members;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON party_members;
 CREATE POLICY "Allow all for approved authenticated" ON party_members
     FOR ALL USING (
@@ -88,6 +89,7 @@ CREATE POLICY "Allow all for approved authenticated" ON party_members
         EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND approved = TRUE)
     );
 
+DROP POLICY IF EXISTS "Allow all for approved authenticated" ON party_payments;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON party_payments;
 CREATE POLICY "Allow all for approved authenticated" ON party_payments
     FOR ALL USING (
@@ -98,6 +100,7 @@ CREATE POLICY "Allow all for approved authenticated" ON party_payments
         EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND approved = TRUE)
     );
 
+DROP POLICY IF EXISTS "Allow all for approved authenticated" ON saved_documents;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON saved_documents;
 CREATE POLICY "Allow all for approved authenticated" ON saved_documents
     FOR ALL USING (
@@ -108,6 +111,7 @@ CREATE POLICY "Allow all for approved authenticated" ON saved_documents
         EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND approved = TRUE)
     );
 
+DROP POLICY IF EXISTS "Allow all for approved authenticated" ON party_settings;
 DROP POLICY IF EXISTS "Allow all for authenticated" ON party_settings;
 CREATE POLICY "Allow all for approved authenticated" ON party_settings
     FOR ALL USING (
@@ -208,3 +212,69 @@ CREATE TRIGGER set_updated_at_profiles
 -- SELECT id, email, COALESCE(raw_user_meta_data->>'full_name', ''), 'admin', TRUE
 -- FROM auth.users WHERE email = 'your-admin@email.com'
 -- ON CONFLICT (id) DO UPDATE SET role = 'admin', approved = TRUE;
+
+-- =========================================
+-- 9. Table: party_finance_entries (Sổ thu, chi tài chính chi bộ)
+-- =========================================
+CREATE TABLE IF NOT EXISTS party_finance_entries (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    entry_date DATE NOT NULL,
+    ref_number TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    entry_type TEXT NOT NULL DEFAULT 'manual',  -- 'auto_dang_phi' | 'manual'
+    -- Phần thu
+    thu_dang_phi NUMERIC DEFAULT 0,
+    thu_kinh_phi_cap_tren NUMERIC DEFAULT 0,
+    thu_khac NUMERIC DEFAULT 0,
+    -- Phần chi
+    chi_bao_tap_chi NUMERIC DEFAULT 0,
+    chi_dai_hoi NUMERIC DEFAULT 0,
+    chi_khen_thuong NUMERIC DEFAULT 0,
+    chi_ho_tro NUMERIC DEFAULT 0,
+    chi_phu_cap_cap_uy NUMERIC DEFAULT 0,
+    chi_khac NUMERIC DEFAULT 0,
+    -- Metadata
+    month INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_finance_entries_user_month ON party_finance_entries(user_id, month, year);
+
+ALTER TABLE party_finance_entries ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all for approved authenticated" ON party_finance_entries;
+CREATE POLICY "Allow all for approved authenticated" ON party_finance_entries
+    FOR ALL USING (
+        auth.uid() = user_id AND
+        EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND approved = TRUE)
+    ) WITH CHECK (
+        auth.uid() = user_id AND
+        EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND approved = TRUE)
+    );
+
+-- 6. Table: member_salary_history (lịch sử điều chỉnh lương)
+CREATE TABLE IF NOT EXISTS member_salary_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    member_id UUID REFERENCES party_members(id) ON DELETE CASCADE,
+    old_salary NUMERIC DEFAULT 0,
+    new_salary NUMERIC DEFAULT 0,
+    effective_month INTEGER NOT NULL,
+    effective_year INTEGER NOT NULL,
+    reason TEXT DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+ALTER TABLE member_salary_history ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all for approved authenticated" ON member_salary_history;
+CREATE POLICY "Allow all for approved authenticated" ON member_salary_history
+    FOR ALL USING (
+        auth.uid() = user_id AND
+        EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND approved = TRUE)
+    ) WITH CHECK (
+        auth.uid() = user_id AND
+        EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND approved = TRUE)
+    );

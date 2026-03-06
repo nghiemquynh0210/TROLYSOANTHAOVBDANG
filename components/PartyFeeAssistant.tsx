@@ -10,7 +10,7 @@ import {
     Users, CheckCircle2, HelpCircle, FileText, ClipboardPaste,
     Trash2, Download, Plus, UserPlus, X, Printer, Table2,
     Copy, ClipboardCheck, BarChart3, Shield, Clock, Target, FileSpreadsheet,
-    QrCode, Share2, Settings
+    QrCode, Share2, Settings, BookOpen, PlusCircle, Pencil
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import {
@@ -22,7 +22,14 @@ import {
     fetchPartySettings, upsertPartySettings, PartySettings
 } from '../services/partySettingsService';
 import { checkPaymentsForMonth, MatchResult } from '../services/sepayService';
-import { Search, Landmark, RefreshCw } from 'lucide-react';
+import {
+    FinanceEntry, fetchFinanceEntries, createFinanceEntry, updateFinanceEntry,
+    deleteFinanceEntry, calculateOpeningBalance, calcTotalIncome, calcTotalExpense,
+    INCOME_FIELDS, EXPENSE_FIELDS, emptyEntry
+} from '../services/financeService';
+import * as salaryHistoryService from '../services/salaryHistoryService';
+import { SalaryHistoryEntry } from '../services/salaryHistoryService';
+import { Search, Landmark, RefreshCw, History } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 // ─── Types ───────────────────────────────────────────
@@ -40,7 +47,7 @@ interface PartyMember {
     paid: boolean;        // Trạng thái đã nộp đảng phí
 }
 
-type TabMode = 'calculator' | 'memberlist' | 'report' | 'settings';
+type TabMode = 'calculator' | 'memberlist' | 'report' | 'finance' | 'settings';
 
 // ─── localStorage helpers ────────────────────────────
 const STORAGE_KEY = 'party_fee_members';
@@ -166,6 +173,33 @@ const PartyFeeAssistant: React.FC = () => {
     const [editWages, setEditWages] = useState<Record<string, number>>(DEFAULT_MINIMUM_WAGES);
     const [wagesSaved, setWagesSaved] = useState(false);
 
+    // Finance tab state
+    const [financeEntries, setFinanceEntries] = useState<FinanceEntry[]>([]);
+    const [financeMonth, setFinanceMonth] = useState(now.getMonth() + 1);
+    const [financeYear, setFinanceYear] = useState(now.getFullYear());
+    const [financeOpeningBalance, setFinanceOpeningBalance] = useState(0);
+    const [financeLoading, setFinanceLoading] = useState(false);
+    const [showFinanceForm, setShowFinanceForm] = useState(false);
+    const [editingFinanceEntry, setEditingFinanceEntry] = useState<FinanceEntry | null>(null);
+
+    // Salary adjustment modal state
+    const [salaryModal, setSalaryModal] = useState<{
+        open: boolean;
+        memberId: string;
+        memberName: string;
+        oldSalary: number;
+        newSalary: number;
+        effectiveMonth: number;
+        effectiveYear: number;
+        reason: string;
+    }>({ open: false, memberId: '', memberName: '', oldSalary: 0, newSalary: 0, effectiveMonth: new Date().getMonth() + 1, effectiveYear: new Date().getFullYear(), reason: '' });
+    // Salary history popup state
+    const [salaryHistoryPopup, setSalaryHistoryPopup] = useState<{ open: boolean; memberId: string; memberName: string; entries: SalaryHistoryEntry[] }>({ open: false, memberId: '', memberName: '', entries: [] });
+    // Monthly salary changes summary
+    const [monthlySalaryChanges, setMonthlySalaryChanges] = useState<SalaryHistoryEntry[]>([]);
+    // Effective salaries map (memberId -> salary) for the selected month/year
+    const [effectiveSalaries, setEffectiveSalaries] = useState<Record<string, number>>({});
+
     // Custom confirm modal state
     const [confirmState, setConfirmState] = useState<{
         open: boolean;
@@ -199,6 +233,10 @@ const PartyFeeAssistant: React.FC = () => {
                     if (p.paid) paidMap[p.member_id] = true;
                 });
                 setMonthlyPaidMap(paidMap);
+
+                // Fetch effective salaries for the selected month
+                const effSals = await salaryHistoryService.fetchAllSalariesForMonth(selectedMonth, selectedYear);
+                setEffectiveSalaries(effSals);
             } catch {
                 console.warn('Failed to load payments');
             }
@@ -206,6 +244,19 @@ const PartyFeeAssistant: React.FC = () => {
         };
         loadPayments();
     }, [selectedMonth, selectedYear]);
+
+    // Load monthly salary changes summary
+    useEffect(() => {
+        const loadSalaryChanges = async () => {
+            try {
+                const changes = await salaryHistoryService.fetchMonthlySalaryChanges(selectedMonth, selectedYear);
+                setMonthlySalaryChanges(changes);
+            } catch {
+                console.warn('Failed to load salary changes');
+            }
+        };
+        loadSalaryChanges();
+    }, [selectedMonth, selectedYear, tabMode]);
 
     // Toggle paid status for a member in selected month
     const toggleMonthlyPaid = useCallback(async (memberId: string, memberName: string, currentlyPaid: boolean) => {
@@ -238,15 +289,47 @@ const PartyFeeAssistant: React.FC = () => {
         }
     }, [selectedMonth, selectedYear, members, showConfirm]);
 
-    // Filter members by search term
+    // Filter + sort members by Vietnamese name (A→Z by TÊN — last word)
     const filteredMembers = useMemo(() => {
-        if (!searchTerm.trim()) return members;
+        const getLastName = (fullName: string) => {
+            const parts = fullName.trim().split(/\s+/);
+            return parts[parts.length - 1] || '';
+        };
+        const sortFn = (a: PartyMember, b: PartyMember) => {
+            const lastA = getLastName(a.hoTen);
+            const lastB = getLastName(b.hoTen);
+            const cmp = lastA.localeCompare(lastB, 'vi');
+            return cmp !== 0 ? cmp : a.hoTen.localeCompare(b.hoTen, 'vi');
+        };
+        if (!searchTerm.trim()) {
+            return [...members].map(m => {
+                const effectiveSalary = effectiveSalaries[m.id] !== undefined ? effectiveSalaries[m.id] : m.salary;
+                if (effectiveSalary === m.salary) return m;
+                // Recalculate fee if salary shifted
+                const fee = calculatePartyFee(m.loaiHinh || 'bhxh', {
+                    salary: effectiveSalary,
+                    region: m.vung || 'Vùng I'
+                });
+                return { ...m, salary: effectiveSalary, feeAmount: fee.amount };
+            }).sort(sortFn);
+        }
         const q = searchTerm.toLowerCase().trim();
-        return members.filter(m =>
-            m.hoTen.toLowerCase().includes(q) ||
-            m.chucVu.toLowerCase().includes(q)
-        );
-    }, [members, searchTerm]);
+        return members
+            .filter(m =>
+                m.hoTen.toLowerCase().includes(q) ||
+                m.chucVu.toLowerCase().includes(q)
+            )
+            .map(m => {
+                const effectiveSalary = effectiveSalaries[m.id] !== undefined ? effectiveSalaries[m.id] : m.salary;
+                if (effectiveSalary === m.salary) return m;
+                const fee = calculatePartyFee(m.loaiHinh || 'bhxh', {
+                    salary: effectiveSalary,
+                    region: m.vung || 'Vùng I'
+                });
+                return { ...m, salary: effectiveSalary, feeAmount: fee.amount };
+            })
+            .sort(sortFn);
+    }, [members, searchTerm, effectiveSalaries]);
 
     // ─── Calculator logic ────────────────────
     const typeInfo = useMemo(() =>
@@ -540,6 +623,20 @@ const PartyFeeAssistant: React.FC = () => {
                                         {members.length > 99 ? '99+' : members.length}
                                     </span>
                                 )}
+                            </button>
+                            <button
+                                onClick={() => setTabMode('finance')}
+                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${tabMode === 'finance' ? 'bg-white/25 text-white shadow-sm' : 'text-white/60 hover:text-white/90'
+                                    }`}
+                            >
+                                <BookOpen className="w-3.5 h-3.5" /> Thu, chi
+                            </button>
+                            <button
+                                onClick={() => setTabMode('report')}
+                                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all ${tabMode === 'report' ? 'bg-white/25 text-white shadow-sm' : 'text-white/60 hover:text-white/90'
+                                    }`}
+                            >
+                                <FileText className="w-3.5 h-3.5" /> Báo cáo
                             </button>
                             <button
                                 onClick={() => setTabMode('settings')}
@@ -1063,7 +1160,7 @@ const PartyFeeAssistant: React.FC = () => {
                         )}
 
                         {/* Member table */}
-                        {members.length > 0 ? (
+                        {members.length > 0 ? (<>
                             <div className="overflow-x-auto">
                                 {searchTerm && (
                                     <div className="px-4 py-2 bg-amber-50 text-xs text-amber-700 font-medium border-b border-amber-200">
@@ -1138,26 +1235,42 @@ const PartyFeeAssistant: React.FC = () => {
                                                     </td>
                                                     <td className="p-3">
                                                         {m.memberType !== 'mien' && m.memberType !== 'hoc_sinh_sv' && (
-                                                            <input
-                                                                key={`salary-${m.id}-${m.salary}`}
-                                                                type="number"
-                                                                defaultValue={m.salary || ''}
-                                                                onBlur={async e => {
-                                                                    const newSalary = parseFloat(e.target.value) || 0;
-                                                                    if (newSalary !== m.salary && newSalary > 0) {
-                                                                        const ok = await showConfirm(
-                                                                            `Cập nhật lương/trợ cấp của "${m.hoTen || 'ĐV'}" thành ${newSalary.toLocaleString('vi-VN')}đ?`,
-                                                                            'Cập nhật lương'
-                                                                        );
-                                                                        if (!ok) {
-                                                                            e.target.value = String(m.salary || ''); return;
+                                                            <div className="flex items-center gap-1">
+                                                                <input
+                                                                    key={`salary-${m.id}-${m.salary}`}
+                                                                    type="number"
+                                                                    defaultValue={m.salary || ''}
+                                                                    onBlur={e => {
+                                                                        const newSalary = parseFloat(e.target.value) || 0;
+                                                                        if (newSalary !== m.salary && newSalary > 0) {
+                                                                            setSalaryModal({
+                                                                                open: true,
+                                                                                memberId: m.id,
+                                                                                memberName: m.hoTen || 'ĐV',
+                                                                                oldSalary: m.salary,
+                                                                                newSalary,
+                                                                                effectiveMonth: new Date().getMonth() + 1,
+                                                                                effectiveYear: new Date().getFullYear(),
+                                                                                reason: ''
+                                                                            });
+                                                                            // Revert input until confirmed
+                                                                            e.target.value = String(m.salary || '');
                                                                         }
-                                                                        updateMember(m.id, { salary: newSalary });
-                                                                    }
-                                                                }}
-                                                                placeholder="0"
-                                                                className="w-full bg-transparent border border-gray-200 rounded-lg text-xs p-1.5 text-right outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
-                                                            />
+                                                                    }}
+                                                                    placeholder="0"
+                                                                    className="w-full bg-transparent border border-gray-200 rounded-lg text-xs p-1.5 text-right outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
+                                                                />
+                                                                <button
+                                                                    onClick={async () => {
+                                                                        const entries = await salaryHistoryService.fetchSalaryHistory(m.id);
+                                                                        setSalaryHistoryPopup({ open: true, memberId: m.id, memberName: m.hoTen || 'ĐV', entries });
+                                                                    }}
+                                                                    className="p-1 text-gray-400 hover:text-amber-600 transition-colors rounded"
+                                                                    title="Lịch sử điều chỉnh lương"
+                                                                >
+                                                                    <History className="w-3.5 h-3.5" />
+                                                                </button>
+                                                            </div>
                                                         )}
                                                         {m.memberType === 'hoc_sinh_sv' && (
                                                             <span className="text-[10px] text-gray-400 italic">Cố định</span>
@@ -1222,7 +1335,38 @@ const PartyFeeAssistant: React.FC = () => {
                                     </tfoot>
                                 </table>
                             </div>
-                        ) : (
+
+                            {/* Monthly Salary Changes Summary */}
+                            {monthlySalaryChanges.length > 0 && (
+                                <div className="mx-4 mt-4 mb-2 bg-blue-50 rounded-xl border border-blue-200 overflow-hidden">
+                                    <div className="px-4 py-2 bg-blue-100 flex items-center gap-2">
+                                        <History className="w-3.5 h-3.5 text-blue-600" />
+                                        <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider">
+                                            Điều chỉnh lương trong kỳ — T{String(selectedMonth).padStart(2, '0')}/{selectedYear}
+                                        </span>
+                                        <span className="ml-auto text-[10px] font-bold text-blue-600 bg-blue-200 px-2 py-0.5 rounded-full">
+                                            {monthlySalaryChanges.length}
+                                        </span>
+                                    </div>
+                                    <div className="divide-y divide-blue-100">
+                                        {monthlySalaryChanges.map((ch, i) => {
+                                            const memberName = members.find(m => m.id === ch.member_id)?.hoTen || 'ĐV';
+                                            return (
+                                                <div key={ch.id || i} className="px-4 py-2 flex items-center gap-3 text-xs">
+                                                    <span className="font-bold text-gray-700 min-w-[120px]">{memberName}</span>
+                                                    <span className="text-gray-400">{ch.old_salary.toLocaleString('vi-VN')}đ</span>
+                                                    <span className="text-gray-300">→</span>
+                                                    <span className={`font-bold ${ch.new_salary > ch.old_salary ? 'text-green-600' : 'text-red-600'}`}>
+                                                        {ch.new_salary.toLocaleString('vi-VN')}đ
+                                                    </span>
+                                                    {ch.reason && <span className="text-gray-400 italic text-[10px] ml-auto">{ch.reason}</span>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </>) : (
                             <div className="p-12 text-center">
                                 <Users className="w-12 h-12 text-gray-200 mx-auto mb-3" />
                                 <p className="text-sm font-bold text-gray-400">Chưa có đảng viên nào</p>
@@ -1277,630 +1421,1328 @@ const PartyFeeAssistant: React.FC = () => {
                         </div>
                     )}
                 </>
-            )}
+            )
+            }
 
             {/* ─── REPORT TAB ───────────────────────────── */}
-            {tabMode === 'report' && (
-                <div className="space-y-4">
-                    {/* Controls */}
-                    <div className="bg-white border-2 border-amber-200 rounded-2xl p-4">
-                        <div className="flex items-center justify-between flex-wrap gap-3">
-                            <div className="flex items-center gap-3">
-                                <label className="text-xs font-bold text-gray-700">Kỳ báo cáo:</label>
-                                <select value={reportMonth} onChange={e => setReportMonth(Number(e.target.value))} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
-                                    {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>Tháng {String(i + 1).padStart(2, '0')}</option>)}
-                                </select>
-                                <select value={reportYear} onChange={e => setReportYear(Number(e.target.value))} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
-                                    {Array.from({ length: 5 }, (_, i) => { const y = new Date().getFullYear() - 1 + i; return <option key={y} value={y}>{y}</option>; })}
-                                </select>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <button
-                                    onClick={() => { window.print(); }}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 transition-colors"
-                                >
-                                    <Printer className="w-3.5 h-3.5" /> In báo cáo
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        const totalMembers = members.length;
-                                        const totalFee = members.reduce((s, m) => s + m.feeAmount, 0);
-                                        const chiBoGiu = Math.round(totalFee * RETENTION_RATES.chiBoGiu / 100);
-                                        const nopCapTren = totalFee - chiBoGiu;
-                                        const mm = String(reportMonth).padStart(2, '0');
+            {
+                tabMode === 'report' && (
+                    <div className="space-y-4">
+                        {/* Controls */}
+                        <div className="bg-white border-2 border-amber-200 rounded-2xl p-4">
+                            <div className="flex items-center justify-between flex-wrap gap-3">
+                                <div className="flex items-center gap-3">
+                                    <label className="text-xs font-bold text-gray-700">Kỳ báo cáo:</label>
+                                    <select value={reportMonth} onChange={e => setReportMonth(Number(e.target.value))} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                                        {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>Tháng {String(i + 1).padStart(2, '0')}</option>)}
+                                    </select>
+                                    <select value={reportYear} onChange={e => setReportYear(Number(e.target.value))} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                                        {Array.from({ length: 5 }, (_, i) => { const y = new Date().getFullYear() - 1 + i; return <option key={y} value={y}>{y}</option>; })}
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => { window.print(); }}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-bold hover:bg-amber-700 transition-colors"
+                                    >
+                                        <Printer className="w-3.5 h-3.5" /> In báo cáo
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            const totalMembers = members.length;
+                                            const totalFee = members.reduce((s, m) => s + m.feeAmount, 0);
+                                            const chiBoGiu = Math.round(totalFee * RETENTION_RATES.chiBoGiu / 100);
+                                            const nopCapTren = totalFee - chiBoGiu;
+                                            const mm = String(reportMonth).padStart(2, '0');
 
-                                        /* ── Build worksheet data ── */
-                                        const wsData: (string | number | null)[][] = [
-                                            /* Row 0: Header left */
-                                            [settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………', null, null, null, null, null, 'ĐẢNG CỘNG SẢN VIỆT NAM'],
-                                            [settings.branch_name || 'CHI BỘ ……………', null, null, null, null, null, `……………, ngày …… tháng ${mm} năm ${reportYear}`],
-                                            ['*'],
-                                            [],
-                                            /* Row 3-4: Title */
-                                            [null, null, null, 'BÁO CÁO THU, NỘP ĐẢNG PHÍ'],
-                                            [null, null, null, `(Tháng ${mm} năm ${reportYear})`],
-                                            [],
-                                            /* Row 7: Table header */
-                                            ['TT', 'Chỉ tiêu', 'Đơn vị tính', 'Mã số', 'Đảng bộ xã, phường', 'Đảng bộ doanh nghiệp', 'Đảng bộ khác', 'Cộng', 'Ghi chú'],
-                                            /* Row I */
-                                            ['I', 'Tổng số đảng viên đến cuối kỳ báo cáo', 'Người', '01', totalMembers || null, null, null, totalMembers || null, null],
-                                            /* Row II */
-                                            ['II', 'Đảng phí đã thu được từ chi bộ của cấp báo cáo', null, null, null, null, null, null, null],
-                                            [null, '1. Kỳ báo cáo', 'Đồng', '02', totalFee || null, null, null, totalFee || null, null],
-                                            [null, '2. Từ đầu năm đến cuối kỳ báo cáo', 'Đồng', '03', totalFee * reportMonth || null, null, null, totalFee * reportMonth || null, null],
-                                            /* Row III */
-                                            ['III', 'Đảng phí trích giữ lại ở các cấp', null, null, null, null, null, null, null],
-                                            [null, '1. Kỳ báo cáo (05+06+07)', 'Đồng', '04', chiBoGiu || null, null, null, chiBoGiu || null, `(${RETENTION_RATES.chiBoGiu}%)`],
-                                            [null, '1.1 Chi bộ, đảng bộ bộ phận', 'Đồng', '05', chiBoGiu || null, null, null, chiBoGiu || null, null],
-                                            [null, '1.2 Tổ chức cơ sở đảng', 'Đồng', '06', null, null, null, null, null],
-                                            [null, '1.3 Cấp trên cơ sở', 'Đồng', '07', null, null, null, null, null],
-                                            [null, '2. Từ đầu năm đến cuối kỳ báo cáo (09+10+11)', 'Đồng', '08', chiBoGiu * reportMonth || null, null, null, chiBoGiu * reportMonth || null, null],
-                                            [null, '2.1 Chi bộ, đảng bộ bộ phận', 'Đồng', '09', chiBoGiu * reportMonth || null, null, null, chiBoGiu * reportMonth || null, null],
-                                            [null, '2.2 Tổ chức cơ sở đảng', 'Đồng', '10', null, null, null, null, null],
-                                            [null, '2.3 Cấp trên cơ sở', 'Đồng', '11', null, null, null, null, null],
-                                            /* Row IV */
-                                            ['IV', 'Đảng phí nộp cấp trên của cấp báo cáo', null, null, null, null, null, null, null],
-                                            [null, '1. Số phải nộp kỳ báo cáo (02–04)', 'Đồng', '12', nopCapTren || null, null, null, nopCapTren || null, `(${RETENTION_RATES.nopCapTren}%)`],
-                                            [null, '2. Từ đầu năm đến cuối kỳ báo cáo (03–08)', 'Đồng', '13', nopCapTren * reportMonth || null, null, null, nopCapTren * reportMonth || null, null],
-                                            [null, '3. Số còn nợ chưa nộp cấp trên đến cuối kỳ báo cáo', 'Đồng', '14', null, null, null, null, null],
-                                            [],
-                                            /* Footer */
-                                            ['Người lập', null, null, null, null, null, `……………, ngày …… tháng …… năm ${reportYear}`],
-                                            [null, null, null, null, null, null, 'T/M cấp ủy'],
-                                        ];
+                                            /* ── Build worksheet data ── */
+                                            const wsData: (string | number | null)[][] = [
+                                                /* Row 0: Header left */
+                                                [settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………', null, null, null, null, null, 'ĐẢNG CỘNG SẢN VIỆT NAM'],
+                                                [settings.branch_name || 'CHI BỘ ……………', null, null, null, null, null, `……………, ngày …… tháng ${mm} năm ${reportYear}`],
+                                                ['*'],
+                                                [],
+                                                /* Row 3-4: Title */
+                                                [null, null, null, 'BÁO CÁO THU, NỘP ĐẢNG PHÍ'],
+                                                [null, null, null, `(Tháng ${mm} năm ${reportYear})`],
+                                                [],
+                                                /* Row 7: Table header */
+                                                ['TT', 'Chỉ tiêu', 'Đơn vị tính', 'Mã số', 'Đảng bộ xã, phường', 'Đảng bộ doanh nghiệp', 'Đảng bộ khác', 'Cộng', 'Ghi chú'],
+                                                /* Row I */
+                                                ['I', 'Tổng số đảng viên đến cuối kỳ báo cáo', 'Người', '01', totalMembers || null, null, null, totalMembers || null, null],
+                                                /* Row II */
+                                                ['II', 'Đảng phí đã thu được từ chi bộ của cấp báo cáo', null, null, null, null, null, null, null],
+                                                [null, '1. Kỳ báo cáo', 'Đồng', '02', totalFee || null, null, null, totalFee || null, null],
+                                                [null, '2. Từ đầu năm đến cuối kỳ báo cáo', 'Đồng', '03', totalFee * reportMonth || null, null, null, totalFee * reportMonth || null, null],
+                                                /* Row III */
+                                                ['III', 'Đảng phí trích giữ lại ở các cấp', null, null, null, null, null, null, null],
+                                                [null, '1. Kỳ báo cáo (05+06+07)', 'Đồng', '04', chiBoGiu || null, null, null, chiBoGiu || null, `(${RETENTION_RATES.chiBoGiu}%)`],
+                                                [null, '1.1 Chi bộ, đảng bộ bộ phận', 'Đồng', '05', chiBoGiu || null, null, null, chiBoGiu || null, null],
+                                                [null, '1.2 Tổ chức cơ sở đảng', 'Đồng', '06', null, null, null, null, null],
+                                                [null, '1.3 Cấp trên cơ sở', 'Đồng', '07', null, null, null, null, null],
+                                                [null, '2. Từ đầu năm đến cuối kỳ báo cáo (09+10+11)', 'Đồng', '08', chiBoGiu * reportMonth || null, null, null, chiBoGiu * reportMonth || null, null],
+                                                [null, '2.1 Chi bộ, đảng bộ bộ phận', 'Đồng', '09', chiBoGiu * reportMonth || null, null, null, chiBoGiu * reportMonth || null, null],
+                                                [null, '2.2 Tổ chức cơ sở đảng', 'Đồng', '10', null, null, null, null, null],
+                                                [null, '2.3 Cấp trên cơ sở', 'Đồng', '11', null, null, null, null, null],
+                                                /* Row IV */
+                                                ['IV', 'Đảng phí nộp cấp trên của cấp báo cáo', null, null, null, null, null, null, null],
+                                                [null, '1. Số phải nộp kỳ báo cáo (02–04)', 'Đồng', '12', nopCapTren || null, null, null, nopCapTren || null, `(${RETENTION_RATES.nopCapTren}%)`],
+                                                [null, '2. Từ đầu năm đến cuối kỳ báo cáo (03–08)', 'Đồng', '13', nopCapTren * reportMonth || null, null, null, nopCapTren * reportMonth || null, null],
+                                                [null, '3. Số còn nợ chưa nộp cấp trên đến cuối kỳ báo cáo', 'Đồng', '14', null, null, null, null, null],
+                                                [],
+                                                /* Footer */
+                                                ['Người lập', null, null, null, null, null, `……………, ngày …… tháng …… năm ${reportYear}`],
+                                                [null, null, null, null, null, null, 'T/M cấp ủy'],
+                                            ];
 
-                                        const wb = XLSX.utils.book_new();
-                                        const ws = XLSX.utils.aoa_to_sheet(wsData);
+                                            const wb = XLSX.utils.book_new();
+                                            const ws = XLSX.utils.aoa_to_sheet(wsData);
 
-                                        /* ── Column widths ── */
-                                        ws['!cols'] = [
-                                            { wch: 5 },   // TT
-                                            { wch: 48 },  // Chỉ tiêu
-                                            { wch: 12 },  // Đơn vị tính
-                                            { wch: 6 },   // Mã số
-                                            { wch: 22 },  // Đảng bộ xã, phường
-                                            { wch: 22 },  // Đảng bộ doanh nghiệp
-                                            { wch: 16 },  // Đảng bộ khác
-                                            { wch: 16 },  // Cộng
-                                            { wch: 10 },  // Ghi chú
-                                        ];
+                                            /* ── Column widths ── */
+                                            ws['!cols'] = [
+                                                { wch: 5 },   // TT
+                                                { wch: 48 },  // Chỉ tiêu
+                                                { wch: 12 },  // Đơn vị tính
+                                                { wch: 6 },   // Mã số
+                                                { wch: 22 },  // Đảng bộ xã, phường
+                                                { wch: 22 },  // Đảng bộ doanh nghiệp
+                                                { wch: 16 },  // Đảng bộ khác
+                                                { wch: 16 },  // Cộng
+                                                { wch: 10 },  // Ghi chú
+                                            ];
 
-                                        /* ── Merge cells for header ── */
-                                        ws['!merges'] = [
-                                            { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },  // ĐẢNG BỘ PHƯỜNG
-                                            { s: { r: 0, c: 6 }, e: { r: 0, c: 8 } },  // ĐẢNG CỘNG SẢN VN
-                                            { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },  // CHI BỘ
-                                            { s: { r: 1, c: 6 }, e: { r: 1, c: 8 } },  // Ngày tháng
-                                            { s: { r: 4, c: 1 }, e: { r: 4, c: 7 } },  // BÁO CÁO title
-                                            { s: { r: 5, c: 1 }, e: { r: 5, c: 7 } },  // Tháng subtitle
-                                            { s: { r: 9, c: 1 }, e: { r: 9, c: 8 } },  // Section II header
-                                            { s: { r: 12, c: 1 }, e: { r: 12, c: 8 } }, // Section III header
-                                            { s: { r: 22, c: 1 }, e: { r: 22, c: 8 } }, // Section IV header
-                                        ];
+                                            /* ── Merge cells for header ── */
+                                            ws['!merges'] = [
+                                                { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },  // ĐẢNG BỘ PHƯỜNG
+                                                { s: { r: 0, c: 6 }, e: { r: 0, c: 8 } },  // ĐẢNG CỘNG SẢN VN
+                                                { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },  // CHI BỘ
+                                                { s: { r: 1, c: 6 }, e: { r: 1, c: 8 } },  // Ngày tháng
+                                                { s: { r: 4, c: 1 }, e: { r: 4, c: 7 } },  // BÁO CÁO title
+                                                { s: { r: 5, c: 1 }, e: { r: 5, c: 7 } },  // Tháng subtitle
+                                                { s: { r: 9, c: 1 }, e: { r: 9, c: 8 } },  // Section II header
+                                                { s: { r: 12, c: 1 }, e: { r: 12, c: 8 } }, // Section III header
+                                                { s: { r: 22, c: 1 }, e: { r: 22, c: 8 } }, // Section IV header
+                                            ];
 
-                                        XLSX.utils.book_append_sheet(wb, ws, `T${mm}-${reportYear}`);
-                                        XLSX.writeFile(wb, `BaoCao_DangPhi_T${mm}_${reportYear}.xlsx`);
-                                    }}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition-colors"
-                                >
-                                    <FileSpreadsheet className="w-3.5 h-3.5" /> Xuất Excel
-                                </button>
+                                            XLSX.utils.book_append_sheet(wb, ws, `T${mm}-${reportYear}`);
+                                            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                                            const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url; a.download = `BaoCao_DangPhi_T${mm}_${reportYear}.xlsx`;
+                                            a.click(); URL.revokeObjectURL(url);
+                                        }}
+                                        className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition-colors"
+                                    >
+                                        <FileSpreadsheet className="w-3.5 h-3.5" /> Xuất Excel
+                                    </button>
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* ─── THỐNG KÊ & DASHBOARD ─────────── */}
-                    {(() => {
-                        const totalMembers = members.length;
-                        const totalFee = members.reduce((s, m) => s + m.feeAmount, 0);
-                        const chiBoGiu = Math.round(totalFee * RETENTION_RATES.chiBoGiu / 100);
-                        const nopCapTren = totalFee - chiBoGiu;
-                        const fmt = (n: number) => n === 0 ? '-' : n.toLocaleString('vi-VN') + ' đ';
-                        const exemptCount = members.filter(m => m.memberType === 'mien').length;
-                        const paidCount = members.filter(m => m.feeAmount > 0).length;
-                        const complianceRate = totalMembers > 0 ? Math.round(((paidCount + exemptCount) / totalMembers) * 100) : 0;
+                        {/* ─── THỐNG KÊ & DASHBOARD ─────────── */}
+                        {(() => {
+                            const totalMembers = members.length;
+                            const totalFee = members.reduce((s, m) => s + m.feeAmount, 0);
+                            const chiBoGiu = Math.round(totalFee * RETENTION_RATES.chiBoGiu / 100);
+                            const nopCapTren = totalFee - chiBoGiu;
+                            const fmt = (n: number) => n === 0 ? '-' : n.toLocaleString('vi-VN') + ' đ';
+                            const exemptCount = members.filter(m => m.memberType === 'mien').length;
+                            const paidCount = members.filter(m => m.feeAmount > 0).length;
+                            const complianceRate = totalMembers > 0 ? Math.round(((paidCount + exemptCount) / totalMembers) * 100) : 0;
 
-                        // Group by type for statistics
-                        const typeStats = MEMBER_TYPES.map(t => {
-                            const group = members.filter(m => m.memberType === t.key);
-                            const totalGroupFee = group.reduce((s, m) => s + m.feeAmount, 0);
-                            return { key: t.key, label: t.label, count: group.length, totalFee: totalGroupFee };
-                        }).filter(s => s.count > 0);
+                            // Group by type for statistics
+                            const typeStats = MEMBER_TYPES.map(t => {
+                                const group = members.filter(m => m.memberType === t.key);
+                                const totalGroupFee = group.reduce((s, m) => s + m.feeAmount, 0);
+                                return { key: t.key, label: t.label, count: group.length, totalFee: totalGroupFee };
+                            }).filter(s => s.count > 0);
 
-                        // Generate text report
-                        const generateTextReport = () => {
-                            const typeRows = typeStats.map((s, i) =>
-                                `${i + 1}. ${s.label}: ${s.count} đồng chí — Tổng đảng phí: ${s.totalFee.toLocaleString('vi-VN')}đ/tháng`
-                            ).join('\n');
-                            return `${settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………'}                    ĐẢNG CỘNG SẢN VIỆT NAM\n${settings.branch_name || 'CHI BỘ ……………'}\n                                              ……………, ngày …… tháng ${String(reportMonth).padStart(2, '0')} năm ${reportYear}\n\nBÁO CÁO\nVề tình hình thực hiện đóng đảng phí theo Quy định số 01-QĐ/TW\nngày 03/02/2026 của Bộ Chính trị\n(Tháng ${String(reportMonth).padStart(2, '0')} năm ${reportYear})\n-----\n\nKính gửi: Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường ……………'}\n\nThực hiện Quy định số 01-QĐ/TW ngày 03/02/2026 của Bộ Chính trị về chế độ đảng phí (có hiệu lực từ ngày 01/02/2026), ${settings.branch_name || 'Chi bộ ……………'} xin báo cáo tình hình triển khai thực hiện như sau:\n\nI. THỐNG KÊ TÌNH HÌNH THỰC HIỆN ĐÓNG ĐẢNG PHÍ\n\n1. Tổng số đảng viên chi bộ: ${totalMembers} đồng chí\n   - Đã hoàn thành nghĩa vụ đảng phí: ${paidCount} đồng chí (${totalMembers > 0 ? Math.round(paidCount / totalMembers * 100) : 0}%)\n   - Được miễn đóng đảng phí: ${exemptCount} đồng chí\n\n2. Thống kê theo nhóm đối tượng:\n${typeRows}\n\nTỔNG ĐẢNG PHÍ THU ĐƯỢC KỲ BÁO CÁO: ${totalFee.toLocaleString('vi-VN')}đ\n\nII. TÌNH HÌNH TRÍCH NỘP\n\n- Tổng đảng phí đã thu kỳ báo cáo (mã 02): ${totalFee.toLocaleString('vi-VN')}đ\n- Trích giữ lại chi bộ ${RETENTION_RATES.chiBoGiu}% (mã 04): ${chiBoGiu.toLocaleString('vi-VN')}đ\n- Nộp cấp trên ${RETENTION_RATES.nopCapTren}% (mã 12): ${nopCapTren.toLocaleString('vi-VN')}đ\n- Lũy kế từ đầu năm (mã 03): ${(totalFee * reportMonth).toLocaleString('vi-VN')}đ\n\nIII. ĐÁNH GIÁ VIỆC ÁP DỤNG CÔNG NGHỆ SỐ\n\n- Tỷ lệ sử dụng Sổ tay đảng viên điện tử: ……%\n- Tỷ lệ đăng ký Cổng Dịch vụ công Quốc gia: ……%\n\nIV. KHÓ KHĂN, VƯỚNG MẮC VÀ KIẾN NGHỊ\n\n1. Khó khăn: (nêu cụ thể)\n2. Kiến nghị: (nêu cụ thể)\n\nV. CAM KẾT THỰC HIỆN NGUYÊN TẮC \"3Đ\"\n\n- ĐÚNG mức đóng theo QĐ 01-QĐ/TW\n- ĐỦ số lượng đảng viên (${totalMembers}/${totalMembers} = ${complianceRate}%)\n- ĐỀU đặn thu nộp hàng tháng, đúng hạn\n\nTrên đây là báo cáo tình hình thực hiện đóng đảng phí. Kính đề nghị Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường'} xem xét, chỉ đạo./.\n\nNơi nhận:                                          T/M ${settings.branch_name?.split(' ')[0] || 'CHI BỘ'}\n- Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường'} (báo cáo);                           BÍ THƯ\n- Ban chi ủy;\n- Lưu Chi bộ.`;
-                        };
+                            // Generate text report
+                            const generateTextReport = () => {
+                                const typeRows = typeStats.map((s, i) =>
+                                    `${i + 1}. ${s.label}: ${s.count} đồng chí — Tổng đảng phí: ${s.totalFee.toLocaleString('vi-VN')}đ/tháng`
+                                ).join('\n');
+                                return `${settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………'}                    ĐẢNG CỘNG SẢN VIỆT NAM\n${settings.branch_name || 'CHI BỘ ……………'}\n                                              ……………, ngày …… tháng ${String(reportMonth).padStart(2, '0')} năm ${reportYear}\n\nBÁO CÁO\nVề tình hình thực hiện đóng đảng phí theo Quy định số 01-QĐ/TW\nngày 03/02/2026 của Bộ Chính trị\n(Tháng ${String(reportMonth).padStart(2, '0')} năm ${reportYear})\n-----\n\nKính gửi: Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường ……………'}\n\nThực hiện Quy định số 01-QĐ/TW ngày 03/02/2026 của Bộ Chính trị về chế độ đảng phí (có hiệu lực từ ngày 01/02/2026), ${settings.branch_name || 'Chi bộ ……………'} xin báo cáo tình hình triển khai thực hiện như sau:\n\nI. THỐNG KÊ TÌNH HÌNH THỰC HIỆN ĐÓNG ĐẢNG PHÍ\n\n1. Tổng số đảng viên chi bộ: ${totalMembers} đồng chí\n   - Đã hoàn thành nghĩa vụ đảng phí: ${paidCount} đồng chí (${totalMembers > 0 ? Math.round(paidCount / totalMembers * 100) : 0}%)\n   - Được miễn đóng đảng phí: ${exemptCount} đồng chí\n\n2. Thống kê theo nhóm đối tượng:\n${typeRows}\n\nTỔNG ĐẢNG PHÍ THU ĐƯỢC KỲ BÁO CÁO: ${totalFee.toLocaleString('vi-VN')}đ\n\nII. TÌNH HÌNH TRÍCH NỘP\n\n- Tổng đảng phí đã thu kỳ báo cáo (mã 02): ${totalFee.toLocaleString('vi-VN')}đ\n- Trích giữ lại chi bộ ${RETENTION_RATES.chiBoGiu}% (mã 04): ${chiBoGiu.toLocaleString('vi-VN')}đ\n- Nộp cấp trên ${RETENTION_RATES.nopCapTren}% (mã 12): ${nopCapTren.toLocaleString('vi-VN')}đ\n- Lũy kế từ đầu năm (mã 03): ${(totalFee * reportMonth).toLocaleString('vi-VN')}đ\n\nIII. ĐÁNH GIÁ VIỆC ÁP DỤNG CÔNG NGHỆ SỐ\n\n- Tỷ lệ sử dụng Sổ tay đảng viên điện tử: ……%\n- Tỷ lệ đăng ký Cổng Dịch vụ công Quốc gia: ……%\n\nIV. KHÓ KHĂN, VƯỚNG MẮC VÀ KIẾN NGHỊ\n\n1. Khó khăn: (nêu cụ thể)\n2. Kiến nghị: (nêu cụ thể)\n\nV. CAM KẾT THỰC HIỆN NGUYÊN TẮC \"3Đ\"\n\n- ĐÚNG mức đóng theo QĐ 01-QĐ/TW\n- ĐỦ số lượng đảng viên (${totalMembers}/${totalMembers} = ${complianceRate}%)\n- ĐỀU đặn thu nộp hàng tháng, đúng hạn\n\nTrên đây là báo cáo tình hình thực hiện đóng đảng phí. Kính đề nghị Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường'} xem xét, chỉ đạo./.\n\nNơi nhận:                                          T/M ${settings.branch_name?.split(' ')[0] || 'CHI BỘ'}\n- Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường'} (báo cáo);                           BÍ THƯ\n- Ban chi ủy;\n- Lưu Chi bộ.`;
+                            };
 
-                        const handleCopyReport = () => {
-                            navigator.clipboard.writeText(generateTextReport());
-                            setReportCopied(true);
-                            setTimeout(() => setReportCopied(false), 2000);
-                        };
+                            const handleCopyReport = () => {
+                                navigator.clipboard.writeText(generateTextReport());
+                                setReportCopied(true);
+                                setTimeout(() => setReportCopied(false), 2000);
+                            };
 
-                        return (<>
-                            {/* ── 3Đ Compliance Dashboard ── */}
-                            {totalMembers > 0 && (
-                                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    {/* ĐÚNG */}
-                                    <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl p-4 text-white shadow-lg">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <Target className="w-5 h-5" />
-                                            <span className="text-xs font-black uppercase tracking-wider">ĐÚNG</span>
+                            return (<>
+                                {/* ── 3Đ Compliance Dashboard ── */}
+                                {totalMembers > 0 && (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        {/* ĐÚNG */}
+                                        <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl p-4 text-white shadow-lg">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Target className="w-5 h-5" />
+                                                <span className="text-xs font-black uppercase tracking-wider">ĐÚNG</span>
+                                            </div>
+                                            <p className="text-2xl font-black">{complianceRate}%</p>
+                                            <p className="text-emerald-200 text-[10px] mt-1">Đúng mức đóng theo QĐ 01-QĐ/TW</p>
+                                            <div className="mt-2 bg-white/20 rounded-full h-2">
+                                                <div className="bg-white rounded-full h-2 transition-all" style={{ width: `${complianceRate}%` }} />
+                                            </div>
+                                            <p className="text-emerald-100 text-[9px] mt-1">{paidCount + exemptCount}/{totalMembers} đảng viên</p>
                                         </div>
-                                        <p className="text-2xl font-black">{complianceRate}%</p>
-                                        <p className="text-emerald-200 text-[10px] mt-1">Đúng mức đóng theo QĐ 01-QĐ/TW</p>
-                                        <div className="mt-2 bg-white/20 rounded-full h-2">
-                                            <div className="bg-white rounded-full h-2 transition-all" style={{ width: `${complianceRate}%` }} />
+                                        {/* ĐỦ */}
+                                        <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl p-4 text-white shadow-lg">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Shield className="w-5 h-5" />
+                                                <span className="text-xs font-black uppercase tracking-wider">ĐỦ</span>
+                                            </div>
+                                            <p className="text-2xl font-black">{totalMembers}</p>
+                                            <p className="text-blue-200 text-[10px] mt-1">Đủ số lượng ĐV quản lý</p>
+                                            <div className="mt-2 space-y-1">
+                                                <div className="flex justify-between text-[9px]">
+                                                    <span>Đóng phí: {paidCount}</span>
+                                                    <span>Miễn: {exemptCount}</span>
+                                                </div>
+                                            </div>
+                                            <p className="text-blue-100 text-[9px] mt-1">Không bỏ sót trường hợp miễn/giảm</p>
                                         </div>
-                                        <p className="text-emerald-100 text-[9px] mt-1">{paidCount + exemptCount}/{totalMembers} đảng viên</p>
+                                        {/* ĐỀU */}
+                                        <div className="bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl p-4 text-white shadow-lg">
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <Clock className="w-5 h-5" />
+                                                <span className="text-xs font-black uppercase tracking-wider">ĐỀU</span>
+                                            </div>
+                                            <p className="text-2xl font-black">T{String(reportMonth).padStart(2, '0')}/{reportYear}</p>
+                                            <p className="text-amber-200 text-[10px] mt-1">Nộp đều đặn hàng tháng</p>
+                                            <div className="mt-2 flex items-center gap-1.5">
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-amber-200" />
+                                                <span className="text-[9px] text-amber-100">Thu: {fmt(totalFee)}</span>
+                                            </div>
+                                            <p className="text-amber-100 text-[9px] mt-1">Lũy kế: {fmt(totalFee * reportMonth)}</p>
+                                        </div>
                                     </div>
-                                    {/* ĐỦ */}
-                                    <div className="bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl p-4 text-white shadow-lg">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <Shield className="w-5 h-5" />
-                                            <span className="text-xs font-black uppercase tracking-wider">ĐỦ</span>
+                                )}
+
+                                {/* ── Thống kê chi tiết theo đối tượng ── */}
+                                {totalMembers > 0 && (
+                                    <div className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden">
+                                        <div className="bg-gray-50 px-4 py-3 flex items-center gap-2 border-b border-gray-200">
+                                            <BarChart3 className="w-4 h-4 text-amber-600" />
+                                            <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider">Thống kê theo nhóm đối tượng</h4>
                                         </div>
-                                        <p className="text-2xl font-black">{totalMembers}</p>
-                                        <p className="text-blue-200 text-[10px] mt-1">Đủ số lượng ĐV quản lý</p>
-                                        <div className="mt-2 space-y-1">
-                                            <div className="flex justify-between text-[9px]">
-                                                <span>Đóng phí: {paidCount}</span>
-                                                <span>Miễn: {exemptCount}</span>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-xs">
+                                                <thead>
+                                                    <tr className="bg-gray-50">
+                                                        <th className="border-b border-gray-200 px-3 py-2 text-left">STT</th>
+                                                        <th className="border-b border-gray-200 px-3 py-2 text-left">Nhóm đối tượng</th>
+                                                        <th className="border-b border-gray-200 px-3 py-2 text-center">Số lượng</th>
+                                                        <th className="border-b border-gray-200 px-3 py-2 text-center">Tỷ lệ</th>
+                                                        <th className="border-b border-gray-200 px-3 py-2 text-right">Tổng ĐP/tháng</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {typeStats.map((s, i) => (
+                                                        <tr key={s.key} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
+                                                            <td className="border-b border-gray-100 px-3 py-2 text-center text-gray-500">{i + 1}</td>
+                                                            <td className="border-b border-gray-100 px-3 py-2 font-medium">{s.label}</td>
+                                                            <td className="border-b border-gray-100 px-3 py-2 text-center">
+                                                                <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px] font-bold">{s.count}</span>
+                                                            </td>
+                                                            <td className="border-b border-gray-100 px-3 py-2 text-center">{getRateLabel(s.key as MemberType)}</td>
+                                                            <td className="border-b border-gray-100 px-3 py-2 text-right font-bold">{s.totalFee.toLocaleString('vi-VN')}đ</td>
+                                                        </tr>
+                                                    ))}
+                                                    <tr className="bg-amber-50 font-bold">
+                                                        <td className="px-3 py-2" colSpan={2}>TỔNG CỘNG</td>
+                                                        <td className="px-3 py-2 text-center">
+                                                            <span className="bg-amber-600 text-white px-2 py-0.5 rounded-full text-[10px]">{totalMembers}</span>
+                                                        </td>
+                                                        <td className="px-3 py-2"></td>
+                                                        <td className="px-3 py-2 text-right text-amber-700">{totalFee.toLocaleString('vi-VN')}đ</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* ── Xuất báo cáo văn bản ── */}
+                                {totalMembers > 0 && (
+                                    <div className="bg-white border-2 border-amber-200 rounded-2xl overflow-hidden">
+                                        <div className="px-4 py-3 flex items-center justify-between border-b border-amber-200 bg-amber-50">
+                                            <div className="flex items-center gap-2">
+                                                <FileText className="w-4 h-4 text-amber-600" />
+                                                <h4 className="text-xs font-black text-amber-800 uppercase tracking-wider">Báo cáo văn bản</h4>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <button
+                                                    onClick={() => setShowTextReport(!showTextReport)}
+                                                    className="text-xs px-3 py-1 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 font-bold transition-colors"
+                                                >
+                                                    {showTextReport ? 'Ẩn' : 'Xem bản nháp'}
+                                                </button>
+                                                <button
+                                                    onClick={handleCopyReport}
+                                                    className={`flex items-center gap-1 text-xs px-3 py-1 rounded-lg font-bold transition-all ${reportCopied ? 'bg-green-500 text-white' : 'bg-amber-600 text-white hover:bg-amber-700'
+                                                        }`}
+                                                >
+                                                    {reportCopied ? <><ClipboardCheck className="w-3 h-3" /> Đã copy!</> : <><Copy className="w-3 h-3" /> Copy báo cáo</>}
+                                                </button>
                                             </div>
                                         </div>
-                                        <p className="text-blue-100 text-[9px] mt-1">Không bỏ sót trường hợp miễn/giảm</p>
+                                        {showTextReport && (
+                                            <div className="p-4">
+                                                <pre className="whitespace-pre-wrap text-xs text-gray-700 font-mono bg-gray-50 border border-gray-200 rounded-xl p-4 max-h-96 overflow-y-auto leading-relaxed">
+                                                    {generateTextReport()}
+                                                </pre>
+                                            </div>
+                                        )}
                                     </div>
-                                    {/* ĐỀU */}
-                                    <div className="bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl p-4 text-white shadow-lg">
-                                        <div className="flex items-center gap-2 mb-2">
-                                            <Clock className="w-5 h-5" />
-                                            <span className="text-xs font-black uppercase tracking-wider">ĐỀU</span>
-                                        </div>
-                                        <p className="text-2xl font-black">T{String(reportMonth).padStart(2, '0')}/{reportYear}</p>
-                                        <p className="text-amber-200 text-[10px] mt-1">Nộp đều đặn hàng tháng</p>
-                                        <div className="mt-2 flex items-center gap-1.5">
-                                            <CheckCircle2 className="w-3.5 h-3.5 text-amber-200" />
-                                            <span className="text-[9px] text-amber-100">Thu: {fmt(totalFee)}</span>
-                                        </div>
-                                        <p className="text-amber-100 text-[9px] mt-1">Lũy kế: {fmt(totalFee * reportMonth)}</p>
-                                    </div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* ── Thống kê chi tiết theo đối tượng ── */}
-                            {totalMembers > 0 && (
-                                <div className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden">
-                                    <div className="bg-gray-50 px-4 py-3 flex items-center gap-2 border-b border-gray-200">
-                                        <BarChart3 className="w-4 h-4 text-amber-600" />
-                                        <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider">Thống kê theo nhóm đối tượng</h4>
+                                {/* ── Bảng báo cáo tài chính ── */}
+                                <div className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden print:border-black" id="party-fee-report">
+                                    {/* Report header */}
+                                    <div className="p-6 text-center space-y-1 print:py-4">
+                                        <div className="flex justify-between items-start px-4">
+                                            <div className="text-left">
+                                                <p className="text-xs font-bold">{settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………'}</p>
+                                                <p className="text-sm font-black">{settings.branch_name || 'CHI BỘ ……………'}</p>
+                                                <p className="text-xs">*</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs font-bold">ĐẢNG CỘNG SẢN VIỆT NAM</p>
+                                                <p className="text-xs italic">……………, ngày …… tháng {String(reportMonth).padStart(2, '0')} năm {reportYear}</p>
+                                            </div>
+                                        </div>
+                                        <div className="pt-3">
+                                            <h3 className="text-sm font-black uppercase">BÁO CÁO THU, NỘP ĐẢNG PHÍ</h3>
+                                            <p className="text-xs">(Tháng {String(reportMonth).padStart(2, '0')} năm {reportYear})</p>
+                                        </div>
                                     </div>
-                                    <div className="overflow-x-auto">
-                                        <table className="w-full text-xs">
+
+                                    {/* Table */}
+                                    <div className="overflow-x-auto px-4 pb-6">
+                                        <table className="w-full border-collapse text-xs print:text-[10px]">
                                             <thead>
-                                                <tr className="bg-gray-50">
-                                                    <th className="border-b border-gray-200 px-3 py-2 text-left">STT</th>
-                                                    <th className="border-b border-gray-200 px-3 py-2 text-left">Nhóm đối tượng</th>
-                                                    <th className="border-b border-gray-200 px-3 py-2 text-center">Số lượng</th>
-                                                    <th className="border-b border-gray-200 px-3 py-2 text-center">Tỷ lệ</th>
-                                                    <th className="border-b border-gray-200 px-3 py-2 text-right">Tổng ĐP/tháng</th>
+                                                <tr className="bg-gray-100 print:bg-gray-200">
+                                                    <th className="border border-gray-400 px-2 py-2 text-center w-8">TT</th>
+                                                    <th className="border border-gray-400 px-2 py-2 text-left min-w-[200px]">Chỉ tiêu</th>
+                                                    <th className="border border-gray-400 px-2 py-2 text-center w-16">Đơn vị tính</th>
+                                                    <th className="border border-gray-400 px-2 py-2 text-center w-10">Mã số</th>
+                                                    <th className="border border-gray-400 px-2 py-2 text-center">Đảng bộ xã, phường</th>
+                                                    <th className="border border-gray-400 px-2 py-2 text-center">Đảng bộ doanh nghiệp</th>
+                                                    <th className="border border-gray-400 px-2 py-2 text-center">Đảng bộ khác</th>
+                                                    <th className="border border-gray-400 px-2 py-2 text-center">Cộng</th>
+                                                    <th className="border border-gray-400 px-2 py-2 text-center w-16">Ghi chú</th>
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {typeStats.map((s, i) => (
-                                                    <tr key={s.key} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}>
-                                                        <td className="border-b border-gray-100 px-3 py-2 text-center text-gray-500">{i + 1}</td>
-                                                        <td className="border-b border-gray-100 px-3 py-2 font-medium">{s.label}</td>
-                                                        <td className="border-b border-gray-100 px-3 py-2 text-center">
-                                                            <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px] font-bold">{s.count}</span>
-                                                        </td>
-                                                        <td className="border-b border-gray-100 px-3 py-2 text-center">{getRateLabel(s.key as MemberType)}</td>
-                                                        <td className="border-b border-gray-100 px-3 py-2 text-right font-bold">{s.totalFee.toLocaleString('vi-VN')}đ</td>
-                                                    </tr>
-                                                ))}
-                                                <tr className="bg-amber-50 font-bold">
-                                                    <td className="px-3 py-2" colSpan={2}>TỔNG CỘNG</td>
-                                                    <td className="px-3 py-2 text-center">
-                                                        <span className="bg-amber-600 text-white px-2 py-0.5 rounded-full text-[10px]">{totalMembers}</span>
-                                                    </td>
-                                                    <td className="px-3 py-2"></td>
-                                                    <td className="px-3 py-2 text-right text-amber-700">{totalFee.toLocaleString('vi-VN')}đ</td>
+                                                {/* I. Tổng số đảng viên */}
+                                                <tr className="font-bold bg-amber-50">
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">I</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5">Tổng số đảng viên đến cuối kỳ báo cáo</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Người</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">01</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{totalMembers || ''}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{totalMembers || ''}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                {/* II. Đảng phí đã thu */}
+                                                <tr className="font-bold bg-amber-50">
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">II</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5" colSpan={8}>Đảng phí đã thu được từ chi bộ của cấp báo cáo</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-4">1. Kỳ báo cáo</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">02</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(totalFee)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(totalFee)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-4">2. Từ đầu năm đến cuối kỳ báo cáo</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">03</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(totalFee * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(totalFee * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                {/* III. Đảng phí trích giữ lại (30%) */}
+                                                <tr className="font-bold bg-amber-50">
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">III</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5" colSpan={8}>Đảng phí trích giữ lại ở các cấp</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-4">1. Kỳ báo cáo (05+06+07)</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">04</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(chiBoGiu)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">({RETENTION_RATES.chiBoGiu}%)</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-6">1.1 Chi bộ, đảng bộ bộ phận</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">05</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-6">1.2 Tổ chức cơ sở đảng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">06</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-6">1.3 Cấp trên cơ sở</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">07</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-4">2. Từ đầu năm đến cuối kỳ báo cáo (09+10+11)</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">08</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(chiBoGiu * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-6">2.1 Chi bộ, đảng bộ bộ phận</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">09</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-6">2.2 Tổ chức cơ sở đảng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">10</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-6">2.3 Cấp trên cơ sở</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">11</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                {/* IV. Đảng phí nộp cấp trên (70%) */}
+                                                <tr className="font-bold bg-amber-50">
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">IV</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5" colSpan={8}>Đảng phí nộp cấp trên của cấp báo cáo</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-4">1. Số phải nộp kỳ báo cáo (02–04)</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">12</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(nopCapTren)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(nopCapTren)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">({RETENTION_RATES.nopCapTren}%)</td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-4">2. Từ đầu năm đến cuối kỳ báo cáo (03–08)</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">13</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(nopCapTren * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(nopCapTren * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                </tr>
+                                                <tr>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 pl-4">3. Số còn nợ chưa nộp cấp trên đến cuối kỳ báo cáo</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-center">14</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
+                                                    <td className="border border-gray-400 px-2 py-1.5"></td>
                                                 </tr>
                                             </tbody>
                                         </table>
                                     </div>
-                                </div>
-                            )}
 
-                            {/* ── Xuất báo cáo văn bản ── */}
-                            {totalMembers > 0 && (
-                                <div className="bg-white border-2 border-amber-200 rounded-2xl overflow-hidden">
-                                    <div className="px-4 py-3 flex items-center justify-between border-b border-amber-200 bg-amber-50">
+                                    {/* Footer */}
+                                    <div className="px-6 pb-6">
+                                        <div className="flex justify-between items-end mt-4">
+                                            <div className="text-center">
+                                                <p className="text-xs font-bold underline">Người lập</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-xs italic">……………, ngày …… tháng …… năm {reportYear}</p>
+                                                <p className="text-xs font-bold">T/M cấp ủy</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </>);
+                        })()}
+
+                        {/* ─── BÁO CÁO TÌNH HÌNH KINH PHÍ HOẠT ĐỘNG ─────────── */}
+                        {(() => {
+                            const totalMembers = members.length;
+                            const totalFee = members.reduce((s, m) => s + m.feeAmount, 0);
+                            const autoDP = Math.round(totalFee * RETENTION_RATES.chiBoGiu / 100);
+                            // Finance data for report period
+                            const manualThuKPCapTren = financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.thu_kinh_phi_cap_tren || 0), 0);
+                            const manualThuKhac = financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.thu_khac || 0), 0);
+                            const totalChi = financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_bao_tap_chi || 0) + (e.chi_dai_hoi || 0) + (e.chi_khen_thuong || 0) + (e.chi_ho_tro || 0) + (e.chi_phu_cap_cap_uy || 0) + (e.chi_khac || 0), 0);
+
+                            // Mã numbers
+                            const ma01 = financeOpeningBalance; // Số dư kỳ trước chuyển sang
+                            const ma03 = autoDP;                // Thu đảng phí (70%)
+                            const ma04 = manualThuKPCapTren;    // KP cấp trên cấp
+                            const ma05 = manualThuKhac;         // Thu khác
+                            const ma02 = ma03 + ma04 + ma05;    // KP phát sinh
+                            const ma06 = ma01 + ma02;           // Tổng KP sử dụng
+                            const ma07 = totalChi;              // KP đã chi
+                            const ma08 = ma06 - ma07;           // KP còn lại
+
+                            // Cumulative (from beginning of year)
+                            const allYearEntries = financeEntries.filter(e => e.year === reportYear && e.month <= reportMonth);
+                            const cumDP = autoDP * reportMonth; // simplified: same fee each month
+                            const cumKPCapTren = allYearEntries.reduce((s, e) => s + (e.thu_kinh_phi_cap_tren || 0), 0);
+                            const cumThuKhac = allYearEntries.reduce((s, e) => s + (e.thu_khac || 0), 0);
+                            const cumChi = allYearEntries.reduce((s, e) => s + (e.chi_bao_tap_chi || 0) + (e.chi_dai_hoi || 0) + (e.chi_khen_thuong || 0) + (e.chi_ho_tro || 0) + (e.chi_phu_cap_cap_uy || 0) + (e.chi_khac || 0), 0);
+                            const cumMa02 = cumDP + cumKPCapTren + cumThuKhac;
+                            const cumMa06 = ma01 + cumMa02; // opening of year + cumulative income
+                            const cumMa08 = cumMa06 - cumChi;
+
+                            // Expense breakdown for Phần III
+                            const chiBreakdown = [
+                                { muc: '1', label: 'Mua báo, tạp chí', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_bao_tap_chi || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_bao_tap_chi || 0), 0) },
+                                { muc: '2', label: 'Chi đại hội, hội nghị', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_dai_hoi || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_dai_hoi || 0), 0) },
+                                { muc: '3', label: 'Khen thưởng', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_khen_thuong || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_khen_thuong || 0), 0) },
+                                { muc: '4', label: 'Chi hỗ trợ, thăm hỏi', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_ho_tro || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_ho_tro || 0), 0) },
+                                { muc: '5', label: 'Phụ cấp cấp ủy', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_phu_cap_cap_uy || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_phu_cap_cap_uy || 0), 0) },
+                                { muc: '6', label: 'Chi khác', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_khac || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_khac || 0), 0) },
+                            ];
+
+                            const fmt = (n: number) => n === 0 ? '' : n.toLocaleString('vi-VN');
+                            const mm = String(reportMonth).padStart(2, '0');
+
+                            return (<>
+                                {/* Divider */}
+                                <div className="border-t-4 border-dashed border-amber-200 my-2"></div>
+
+                                {/* Report 2: BÁO CÁO TÌNH HÌNH KINH PHÍ HOẠT ĐỘNG */}
+                                <div className="bg-white border border-gray-300 rounded-xl shadow-sm overflow-hidden print:shadow-none">
+                                    {/* Header */}
+                                    <div className="px-6 pt-6 pb-2">
+                                        <div className="flex justify-between items-start text-xs">
+                                            <div>
+                                                <p className="font-bold uppercase">{settings.superior_party || 'ĐẢNG ỦY PHƯỜNG ……………'}</p>
+                                                <p className="font-bold uppercase">{settings.branch_name || 'CHI BỘ ……………'}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="font-bold">ĐẢNG CỘNG SẢN VIỆT NAM</p>
+                                                <p>─────────</p>
+                                            </div>
+                                        </div>
+                                        <div className="text-center mt-4 mb-2">
+                                            <p className="text-sm font-black uppercase">BÁO CÁO TÌNH HÌNH KINH PHÍ HOẠT ĐỘNG CỦA CHI BỘ</p>
+                                            <p className="text-xs italic mt-1">Tháng {mm} năm {reportYear}</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Phần I */}
+                                    <div className="px-6 py-2">
+                                        <p className="text-xs font-bold underline mb-1">Phần I - Tình hình tổ chức đảng, tiền lương</p>
+                                        <p className="text-xs">1- Tổng số đảng viên: <strong>{totalMembers}</strong> đồng chí</p>
+                                        <p className="text-xs">2- Số cấp ủy viên: <strong>……</strong> đồng chí</p>
+                                    </div>
+
+                                    {/* Phần II */}
+                                    <div className="px-6 py-2">
+                                        <p className="text-xs font-bold underline mb-1">Phần II - Tình hình thu, chi</p>
+                                        <p className="text-[10px] italic text-gray-500 mb-2">Đơn vị tính: đồng</p>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-xs border-collapse">
+                                                <thead>
+                                                    <tr className="bg-gray-100">
+                                                        <th className="border border-gray-400 px-2 py-1.5 text-center w-[40px]">TT</th>
+                                                        <th className="border border-gray-400 px-2 py-1.5 text-left">Chỉ tiêu</th>
+                                                        <th className="border border-gray-400 px-2 py-1.5 text-center w-[40px]">Mã số</th>
+                                                        <th className="border border-gray-400 px-2 py-1.5 text-center w-[110px]">Kỳ này</th>
+                                                        <th className="border border-gray-400 px-2 py-1.5 text-center w-[110px]">Lũy kế</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <tr className="font-bold bg-amber-50">
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">I</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5" colSpan={4}>Nguồn Kinh phí</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">1</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 pl-4">Số dư KP kỳ trước chuyển sang</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">01</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(ma01)}</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(ma01)}</td>
+                                                    </tr>
+                                                    <tr className="font-semibold">
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">2</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 pl-4">Kinh phí phát sinh (03+04+05)</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">02</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(ma02)}</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(cumMa02)}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">2.1</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 pl-6">Thu đảng phí</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">03</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(ma03)}</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(cumDP)}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">2.2</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 pl-6">Kinh phí được cấp trên cấp</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">04</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(ma04)}</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(cumKPCapTren)}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">2.3</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 pl-6">Thu khác</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">05</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(ma05)}</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(cumThuKhac)}</td>
+                                                    </tr>
+                                                    <tr className="font-bold bg-amber-50">
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">3</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 pl-4">Tổng kinh phí được sử dụng (01+02)</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">06</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(ma06)}</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(cumMa06)}</td>
+                                                    </tr>
+                                                    <tr className="font-bold bg-red-50">
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">II</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5">Kinh phí đã chi</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">07</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right text-red-700">{fmt(ma07)}</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right text-red-700">{fmt(cumChi)}</td>
+                                                    </tr>
+                                                    <tr className="font-bold bg-blue-50">
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">III</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5">Kinh phí còn lại chuyển kỳ sau (06-07)</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-center">08</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right text-blue-700">{fmt(ma08)}</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right text-blue-700">{fmt(cumMa08)}</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Phần III */}
+                                    <div className="px-6 py-2 pb-4">
+                                        <p className="text-xs font-bold underline mb-1">Phần III - Phân tích kinh phí đã chi</p>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-xs border-collapse">
+                                                <thead>
+                                                    <tr className="bg-gray-100">
+                                                        <th className="border border-gray-400 px-2 py-1.5 text-center w-[40px]">Mục</th>
+                                                        <th className="border border-gray-400 px-2 py-1.5 text-left">Nội dung chi</th>
+                                                        <th className="border border-gray-400 px-2 py-1.5 text-center w-[110px]">Kỳ này</th>
+                                                        <th className="border border-gray-400 px-2 py-1.5 text-center w-[110px]">Lũy kế</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {chiBreakdown.map(item => (
+                                                        <tr key={item.muc}>
+                                                            <td className="border border-gray-400 px-2 py-1.5 text-center">{item.muc}</td>
+                                                            <td className="border border-gray-400 px-2 py-1.5">{item.label}</td>
+                                                            <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(item.ky)}</td>
+                                                            <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(item.luyKe)}</td>
+                                                        </tr>
+                                                    ))}
+                                                    <tr className="font-bold bg-red-50">
+                                                        <td className="border border-gray-400 px-2 py-1.5"></td>
+                                                        <td className="border border-gray-400 px-2 py-1.5">Tổng cộng</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right text-red-700">{fmt(ma07)}</td>
+                                                        <td className="border border-gray-400 px-2 py-1.5 text-right text-red-700">{fmt(cumChi)}</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+
+                                    {/* Footer */}
+                                    <div className="px-6 pb-4">
+                                        <div className="flex justify-between items-end mt-4">
+                                            <div className="text-center">
+                                                <p className="text-xs font-bold underline">Người lập</p>
+                                            </div>
+                                            <div className="text-center">
+                                                <p className="text-xs italic">……………, ngày …… tháng …… năm {reportYear}</p>
+                                                <p className="text-xs font-bold">T/M cấp ủy</p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Export Excel button */}
+                                    <div className="px-6 pb-4 flex justify-end">
+                                        <button onClick={() => {
+                                            const wsData: (string | number | null)[][] = [
+                                                [settings.superior_party || 'ĐẢNG ỦY PHƯỜNG ……………', null, null, null, 'ĐẢNG CỘNG SẢN VIỆT NAM'],
+                                                [settings.branch_name || 'CHI BỘ ……………', null, null, null, '─────────'],
+                                                [],
+                                                [null, 'BÁO CÁO TÌNH HÌNH KINH PHÍ HOẠT ĐỘNG CỦA CHI BỘ'],
+                                                [null, null, `Tháng ${mm} năm ${reportYear}`],
+                                                [],
+                                                ['Phần I - Tình hình tổ chức đảng, tiền lương'],
+                                                [`1- Tổng số đảng viên: ${totalMembers} đồng chí`],
+                                                ['2- Số cấp ủy viên: …… đồng chí'],
+                                                [],
+                                                ['Phần II - Tình hình thu, chi'],
+                                                ['Đơn vị tính: đồng'],
+                                                ['TT', 'Chỉ tiêu', 'Mã số', 'Kỳ này', 'Lũy kế'],
+                                                ['I', 'Nguồn Kinh phí'],
+                                                [1, 'Số dư KP kỳ trước chuyển sang', '01', ma01 || null, ma01 || null],
+                                                [2, 'Kinh phí phát sinh (03+04+05)', '02', ma02 || null, cumMa02 || null],
+                                                ['2.1', '   Thu đảng phí', '03', ma03 || null, cumDP || null],
+                                                ['2.2', '   Kinh phí được cấp trên cấp', '04', ma04 || null, cumKPCapTren || null],
+                                                ['2.3', '   Thu khác', '05', ma05 || null, cumThuKhac || null],
+                                                [3, 'Tổng kinh phí được sử dụng (01+02)', '06', ma06 || null, cumMa06 || null],
+                                                ['II', 'Kinh phí đã chi', '07', ma07 || null, cumChi || null],
+                                                ['III', 'Kinh phí còn lại chuyển kỳ sau (06-07)', '08', ma08, cumMa08],
+                                                [],
+                                                ['Phần III - Phân tích kinh phí đã chi'],
+                                                ['Mục', 'Nội dung chi', null, 'Kỳ này', 'Lũy kế'],
+                                            ];
+                                            chiBreakdown.forEach(item => {
+                                                wsData.push([item.muc, item.label, null, item.ky || null, item.luyKe || null]);
+                                            });
+                                            wsData.push([null, 'Tổng cộng', null, ma07 || null, cumChi || null]);
+
+                                            const wb = XLSX.utils.book_new();
+                                            const ws = XLSX.utils.aoa_to_sheet(wsData);
+                                            ws['!cols'] = [{ wch: 8 }, { wch: 45 }, { wch: 8 }, { wch: 16 }, { wch: 16 }];
+                                            ws['!merges'] = [
+                                                { s: { r: 0, c: 0 }, e: { r: 0, c: 2 } },
+                                                { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } },
+                                                { s: { r: 3, c: 1 }, e: { r: 3, c: 4 } },
+                                            ];
+                                            XLSX.utils.book_append_sheet(wb, ws, `KinhPhi_T${mm}`);
+                                            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                                            const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url; a.download = `BaoCao_KinhPhi_T${mm}_${reportYear}.xlsx`;
+                                            a.click(); URL.revokeObjectURL(url);
+                                        }}
+                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition-colors"
+                                        >
+                                            <FileSpreadsheet className="w-3.5 h-3.5" /> Xuất Excel
+                                        </button>
+                                    </div>
+                                </div>
+                            </>);
+                        })()}
+
+                    </div>
+                )
+            }
+
+            {/* ═══════════════ TAB: FINANCE (SỔ THU, CHI) ═══════════════ */}
+            {
+                tabMode === 'finance' && (() => {
+                    // ── Auto party fee calculation (70% chi bộ giữ) ──
+                    const paidMembers = members.filter(m => monthlyPaidMap[m.id] && m.feeAmount > 0);
+                    const totalCollectedDP = paidMembers.reduce((s, m) => s + m.feeAmount, 0);
+                    const autoPartyFeeAmount = Math.round(totalCollectedDP * RETENTION_RATES.chiBoGiu / 100);
+
+                    // ── Build virtual auto entry ──
+                    const autoEntry: FinanceEntry = {
+                        id: '__auto_dp__',
+                        entry_date: `${financeYear}-${String(financeMonth).padStart(2, '0')}-01`,
+                        ref_number: '',
+                        description: `Đảng phí T${String(financeMonth).padStart(2, '0')}/${financeYear} — ${paidMembers.length}/${members.filter(m => m.feeAmount > 0).length} ĐV`,
+                        entry_type: 'auto_dang_phi',
+                        thu_dang_phi: autoPartyFeeAmount,
+                        thu_kinh_phi_cap_tren: 0, thu_khac: 0,
+                        chi_bao_tap_chi: 0, chi_dai_hoi: 0, chi_khen_thuong: 0,
+                        chi_ho_tro: 0, chi_phu_cap_cap_uy: 0, chi_khac: 0,
+                        month: financeMonth, year: financeYear,
+                    };
+
+                    // ── All entries = auto + manual ──
+                    const allEntries = [autoEntry, ...financeEntries];
+
+                    // ── Totals ──
+                    const sumIncome = allEntries.reduce((s, e) => s + calcTotalIncome(e), 0);
+                    const sumExpense = allEntries.reduce((s, e) => s + calcTotalExpense(e), 0);
+                    const closingBalance = financeOpeningBalance + sumIncome - sumExpense;
+
+                    const fmt = (n: number) => n === 0 ? '-' : n.toLocaleString('vi-VN');
+
+                    // ── Load finance data ──
+                    const loadFinanceData = async () => {
+                        setFinanceLoading(true);
+                        try {
+                            const [entries, opening] = await Promise.all([
+                                fetchFinanceEntries(financeMonth, financeYear),
+                                calculateOpeningBalance(financeMonth, financeYear)
+                            ]);
+                            setFinanceEntries(entries.filter(e => e.entry_type !== 'auto_dang_phi'));
+                            setFinanceOpeningBalance(opening);
+                        } catch { console.warn('Failed to load finance data'); }
+                        setFinanceLoading(false);
+                    };
+
+                    // ── Save entry (new or edit) ──
+                    const handleSaveEntry = async (entry: FinanceEntry) => {
+                        if (editingFinanceEntry?.id) {
+                            await updateFinanceEntry(editingFinanceEntry.id, entry);
+                        } else {
+                            await createFinanceEntry(entry);
+                        }
+                        setShowFinanceForm(false);
+                        setEditingFinanceEntry(null);
+                        loadFinanceData();
+                    };
+
+                    // ── Delete entry ──
+                    const handleDeleteEntry = async (id: string) => {
+                        const confirmed = await showConfirm('Xóa giao dịch này?', 'Xác nhận xóa', 'warning');
+                        if (!confirmed) return;
+                        await deleteFinanceEntry(id);
+                        loadFinanceData();
+                    };
+
+                    return (
+                        <div className="space-y-4">
+                            {/* Controls */}
+                            <div className="bg-white border-2 border-teal-200 rounded-2xl p-4">
+                                <div className="flex items-center justify-between flex-wrap gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <BookOpen className="w-4 h-4 text-teal-600" />
+                                        <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Sổ thu, chi tài chính Chi bộ</span>
                                         <div className="flex items-center gap-2">
-                                            <FileText className="w-4 h-4 text-amber-600" />
-                                            <h4 className="text-xs font-black text-amber-800 uppercase tracking-wider">Báo cáo văn bản</h4>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                            <button
-                                                onClick={() => setShowTextReport(!showTextReport)}
-                                                className="text-xs px-3 py-1 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200 font-bold transition-colors"
-                                            >
-                                                {showTextReport ? 'Ẩn' : 'Xem bản nháp'}
-                                            </button>
-                                            <button
-                                                onClick={handleCopyReport}
-                                                className={`flex items-center gap-1 text-xs px-3 py-1 rounded-lg font-bold transition-all ${reportCopied ? 'bg-green-500 text-white' : 'bg-amber-600 text-white hover:bg-amber-700'
-                                                    }`}
-                                            >
-                                                {reportCopied ? <><ClipboardCheck className="w-3 h-3" /> Đã copy!</> : <><Copy className="w-3 h-3" /> Copy báo cáo</>}
+                                            <select value={financeMonth} onChange={e => { setFinanceMonth(Number(e.target.value)); setTimeout(loadFinanceData, 50); }} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                                                {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>Tháng {String(i + 1).padStart(2, '0')}</option>)}
+                                            </select>
+                                            <select value={financeYear} onChange={e => { setFinanceYear(Number(e.target.value)); setTimeout(loadFinanceData, 50); }} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                                                {Array.from({ length: 5 }, (_, i) => { const y = new Date().getFullYear() - 1 + i; return <option key={y} value={y}>{y}</option>; })}
+                                            </select>
+                                            <button onClick={loadFinanceData} className="p-1.5 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors" title="Tải lại">
+                                                <RefreshCw className={`w-3.5 h-3.5 text-teal-600 ${financeLoading ? 'animate-spin' : ''}`} />
                                             </button>
                                         </div>
                                     </div>
-                                    {showTextReport && (
-                                        <div className="p-4">
-                                            <pre className="whitespace-pre-wrap text-xs text-gray-700 font-mono bg-gray-50 border border-gray-200 rounded-xl p-4 max-h-96 overflow-y-auto leading-relaxed">
-                                                {generateTextReport()}
-                                            </pre>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={() => {
+                                            const mm = String(financeMonth).padStart(2, '0');
+                                            const wsData: (string | number | null)[][] = [
+                                                [settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………', null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+                                                [settings.branch_name || 'CHI BỘ ……………', null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+                                                [],
+                                                [null, null, null, null, 'SỔ THU, CHI TÀI CHÍNH CỦA CHI BỘ'],
+                                                [null, null, null, null, null, `Đơn vị tính: đồng`],
+                                                [null, null, null, null, null, `Tháng ${mm} năm ${financeYear}`],
+                                                [],
+                                                ['Ngày tháng', 'Số hiệu', 'Diễn giải', 'Đảng phí (1)', 'KP cấp trên cấp (2)', 'Thu khác (3)', 'Tổng thu (4)', 'Báo, tạp chí (5)', 'Đại hội (6)', 'Khen thưởng (7)', 'Chi hỗ trợ (8)', 'Phụ cấp cấp ủy (9)', 'Chi khác (10)', 'Tổng Chi (11)', 'Tồn quỹ (12)'],
+                                                // Opening balance
+                                                [null, null, 'Số dư đầu kỳ', null, null, null, null, null, null, null, null, null, null, null, financeOpeningBalance || null],
+                                            ];
+                                            let runBal = financeOpeningBalance;
+                                            allEntries.forEach(e => {
+                                                const inc = calcTotalIncome(e);
+                                                const exp = calcTotalExpense(e);
+                                                runBal += inc - exp;
+                                                wsData.push([
+                                                    e.entry_date?.slice(5) || '', e.ref_number || '', e.description || '',
+                                                    e.thu_dang_phi || null, e.thu_kinh_phi_cap_tren || null, e.thu_khac || null, inc || null,
+                                                    e.chi_bao_tap_chi || null, e.chi_dai_hoi || null, e.chi_khen_thuong || null,
+                                                    e.chi_ho_tro || null, e.chi_phu_cap_cap_uy || null, e.chi_khac || null, exp || null,
+                                                    runBal
+                                                ]);
+                                            });
+                                            // Period totals
+                                            wsData.push([
+                                                null, null, 'Cộng phát trong kỳ',
+                                                allEntries.reduce((s, e) => s + e.thu_dang_phi, 0) || null,
+                                                allEntries.reduce((s, e) => s + e.thu_kinh_phi_cap_tren, 0) || null,
+                                                allEntries.reduce((s, e) => s + e.thu_khac, 0) || null,
+                                                sumIncome || null,
+                                                allEntries.reduce((s, e) => s + e.chi_bao_tap_chi, 0) || null,
+                                                allEntries.reduce((s, e) => s + e.chi_dai_hoi, 0) || null,
+                                                allEntries.reduce((s, e) => s + e.chi_khen_thuong, 0) || null,
+                                                allEntries.reduce((s, e) => s + e.chi_ho_tro, 0) || null,
+                                                allEntries.reduce((s, e) => s + e.chi_phu_cap_cap_uy, 0) || null,
+                                                allEntries.reduce((s, e) => s + e.chi_khac, 0) || null,
+                                                sumExpense || null,
+                                                closingBalance
+                                            ]);
 
-                            {/* ── Bảng báo cáo tài chính ── */}
-                            <div className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden print:border-black" id="party-fee-report">
-                                {/* Report header */}
-                                <div className="p-6 text-center space-y-1 print:py-4">
-                                    <div className="flex justify-between items-start px-4">
-                                        <div className="text-left">
-                                            <p className="text-xs font-bold">{settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………'}</p>
-                                            <p className="text-sm font-black">{settings.branch_name || 'CHI BỘ ……………'}</p>
-                                            <p className="text-xs">*</p>
-                                        </div>
-                                        <div className="text-right">
-                                            <p className="text-xs font-bold">ĐẢNG CỘNG SẢN VIỆT NAM</p>
-                                            <p className="text-xs italic">……………, ngày …… tháng {String(reportMonth).padStart(2, '0')} năm {reportYear}</p>
-                                        </div>
-                                    </div>
-                                    <div className="pt-3">
-                                        <h3 className="text-sm font-black uppercase">BÁO CÁO THU, NỘP ĐẢNG PHÍ</h3>
-                                        <p className="text-xs">(Tháng {String(reportMonth).padStart(2, '0')} năm {reportYear})</p>
+                                            const wb = XLSX.utils.book_new();
+                                            const ws = XLSX.utils.aoa_to_sheet(wsData);
+                                            ws['!cols'] = [
+                                                { wch: 12 }, { wch: 8 }, { wch: 30 },
+                                                { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 14 },
+                                                { wch: 12 }, { wch: 10 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 14 },
+                                            ];
+                                            ws['!merges'] = [
+                                                { s: { r: 0, c: 0 }, e: { r: 0, c: 3 } },
+                                                { s: { r: 1, c: 0 }, e: { r: 1, c: 3 } },
+                                                { s: { r: 3, c: 3 }, e: { r: 3, c: 12 } },
+                                            ];
+                                            XLSX.utils.book_append_sheet(wb, ws, `ThuChi_T${mm}`);
+                                            const wbout2 = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                                            const blob2 = new Blob([wbout2], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                                            const url2 = URL.createObjectURL(blob2);
+                                            const a2 = document.createElement('a');
+                                            a2.href = url2; a2.download = `SoThuChi_T${mm}_${financeYear}.xlsx`;
+                                            a2.click(); URL.revokeObjectURL(url2);
+                                        }}
+                                            className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
+                                            <FileSpreadsheet className="w-3.5 h-3.5" /> Xuất Excel
+                                        </button>
+                                        <button onClick={() => { setEditingFinanceEntry(null); setShowFinanceForm(true); }}
+                                            className="px-3 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
+                                            <PlusCircle className="w-3.5 h-3.5" /> Thêm giao dịch
+                                        </button>
                                     </div>
                                 </div>
+                            </div>
 
-                                {/* Table */}
-                                <div className="overflow-x-auto px-4 pb-6">
-                                    <table className="w-full border-collapse text-xs print:text-[10px]">
+                            {/* Auto DP Banner */}
+                            <div className="bg-gradient-to-r from-amber-50 to-yellow-50 border-2 border-amber-200 rounded-2xl p-4 flex items-center gap-3">
+                                <div className="bg-amber-200 p-2 rounded-xl flex-shrink-0">
+                                    <Wallet className="w-5 h-5 text-amber-700" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-bold text-amber-800">
+                                        Đảng phí T{String(financeMonth).padStart(2, '0')}/{financeYear}: Thu {totalCollectedDP.toLocaleString('vi-VN')}đ từ {paidMembers.length} ĐV
+                                        → Chi bộ giữ {RETENTION_RATES.chiBoGiu}% = <span className="text-base">{autoPartyFeeAmount.toLocaleString('vi-VN')}đ</span>
+                                    </p>
+                                    <p className="text-[10px] text-amber-600 mt-0.5">Tự động liên kết từ tab "Danh sách ĐV" • 30% ({Math.round(totalCollectedDP * RETENTION_RATES.nopCapTren / 100).toLocaleString('vi-VN')}đ) nộp cấp trên</p>
+                                </div>
+                            </div>
+
+                            {/* Dashboard Cards */}
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="bg-white border-2 border-gray-200 rounded-2xl p-4 text-center">
+                                    <p className="text-[9px] font-bold text-gray-400 uppercase tracking-wider">Tồn đầu kỳ</p>
+                                    <p className={`text-xl font-black mt-1 ${financeOpeningBalance >= 0 ? 'text-gray-700' : 'text-red-600'}`}>{fmt(financeOpeningBalance)}</p>
+                                </div>
+                                <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl p-4 text-center text-white shadow-lg">
+                                    <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-200">Tổng thu</p>
+                                    <p className="text-xl font-black mt-1">{fmt(sumIncome)}</p>
+                                </div>
+                                <div className="bg-gradient-to-br from-red-500 to-red-700 rounded-2xl p-4 text-center text-white shadow-lg">
+                                    <p className="text-[9px] font-bold uppercase tracking-wider text-red-200">Tổng chi</p>
+                                    <p className="text-xl font-black mt-1">{fmt(sumExpense)}</p>
+                                </div>
+                                <div className={`bg-gradient-to-br ${closingBalance >= 0 ? 'from-blue-500 to-blue-700' : 'from-orange-500 to-red-600'} rounded-2xl p-4 text-center text-white shadow-lg`}>
+                                    <p className="text-[9px] font-bold uppercase tracking-wider text-blue-200">Tồn cuối kỳ</p>
+                                    <p className="text-xl font-black mt-1">{fmt(closingBalance)}</p>
+                                </div>
+                            </div>
+
+                            {/* Ledger Table */}
+                            <div className="bg-white border-2 border-gray-200 rounded-2xl overflow-hidden">
+                                <div className="bg-teal-50 px-4 py-3 flex items-center gap-2 border-b border-gray-200">
+                                    <Table2 className="w-4 h-4 text-teal-600" />
+                                    <h4 className="text-xs font-black text-gray-800 uppercase tracking-wider">Sổ thu, chi tài chính</h4>
+                                    <span className="text-[10px] text-gray-500 ml-2">Đơn vị: đồng</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-[11px] border-collapse min-w-[1100px]">
                                         <thead>
-                                            <tr className="bg-gray-100 print:bg-gray-200">
-                                                <th className="border border-gray-400 px-2 py-2 text-center w-8">TT</th>
-                                                <th className="border border-gray-400 px-2 py-2 text-left min-w-[200px]">Chỉ tiêu</th>
-                                                <th className="border border-gray-400 px-2 py-2 text-center w-16">Đơn vị tính</th>
-                                                <th className="border border-gray-400 px-2 py-2 text-center w-10">Mã số</th>
-                                                <th className="border border-gray-400 px-2 py-2 text-center">Đảng bộ xã, phường</th>
-                                                <th className="border border-gray-400 px-2 py-2 text-center">Đảng bộ doanh nghiệp</th>
-                                                <th className="border border-gray-400 px-2 py-2 text-center">Đảng bộ khác</th>
-                                                <th className="border border-gray-400 px-2 py-2 text-center">Cộng</th>
-                                                <th className="border border-gray-400 px-2 py-2 text-center w-16">Ghi chú</th>
+                                            <tr className="bg-gray-100">
+                                                <th rowSpan={2} className="border border-gray-300 px-2 py-2 text-center font-bold w-[80px]">Ngày<br />tháng</th>
+                                                <th rowSpan={2} className="border border-gray-300 px-2 py-2 text-center font-bold w-[60px]">Số<br />hiệu</th>
+                                                <th rowSpan={2} className="border border-gray-300 px-2 py-2 text-center font-bold w-[140px]">Diễn giải</th>
+                                                <th colSpan={4} className="border border-gray-300 px-2 py-1 text-center font-bold bg-emerald-50 text-emerald-800">Phần thu</th>
+                                                <th colSpan={7} className="border border-gray-300 px-2 py-1 text-center font-bold bg-red-50 text-red-800">Phần chi</th>
+                                                <th rowSpan={2} className="border border-gray-300 px-2 py-2 text-center font-bold bg-blue-50 text-blue-800 w-[85px]">Tồn quỹ<br />(12)</th>
+                                                <th rowSpan={2} className="border border-gray-300 px-2 py-2 text-center font-bold w-[30px]"></th>
+                                            </tr>
+                                            <tr className="bg-gray-50 text-[10px]">
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-emerald-50">Đảng phí<br />(1)</th>
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-emerald-50">KP cấp<br />trên cấp<br />(2)</th>
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-emerald-50">Thu<br />khác<br />(3)</th>
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-emerald-50 font-bold">Tổng thu<br />(4)</th>
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-red-50">Báo,<br />tạp chí<br />(5)</th>
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-red-50">Đại<br />hội<br />(6)</th>
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-red-50">Khen<br />thưởng<br />(7)</th>
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-red-50">Chi hỗ<br />trợ<br />(8)</th>
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-red-50">Phụ cấp<br />cấp ủy<br />(9)</th>
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-red-50">Chi<br />khác<br />(10)</th>
+                                                <th className="border border-gray-300 px-1 py-1 text-center bg-red-50 font-bold">Tổng<br />Chi<br />(11)</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {/* I. Tổng số đảng viên */}
-                                            <tr className="font-bold bg-amber-50">
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">I</td>
-                                                <td className="border border-gray-400 px-2 py-1.5">Tổng số đảng viên đến cuối kỳ báo cáo</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Người</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">01</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{totalMembers || ''}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{totalMembers || ''}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
+                                            {/* Opening balance row */}
+                                            <tr className="bg-blue-50/50 font-bold">
+                                                <td className="border border-gray-300 px-2 py-1.5"></td>
+                                                <td className="border border-gray-300 px-2 py-1.5"></td>
+                                                <td className="border border-gray-300 px-2 py-1.5 italic text-blue-700">Số dư đầu kỳ</td>
+                                                <td colSpan={11} className="border border-gray-300"></td>
+                                                <td className="border border-gray-300 px-2 py-1.5 text-right text-blue-700">{fmt(financeOpeningBalance)}</td>
+                                                <td className="border border-gray-300"></td>
                                             </tr>
-                                            {/* II. Đảng phí đã thu */}
-                                            <tr className="font-bold bg-amber-50">
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">II</td>
-                                                <td className="border border-gray-400 px-2 py-1.5" colSpan={8}>Đảng phí đã thu được từ chi bộ của cấp báo cáo</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-4">1. Kỳ báo cáo</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">02</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(totalFee)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(totalFee)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-4">2. Từ đầu năm đến cuối kỳ báo cáo</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">03</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(totalFee * reportMonth)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(totalFee * reportMonth)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
-                                            </tr>
-                                            {/* III. Đảng phí trích giữ lại (30%) */}
-                                            <tr className="font-bold bg-amber-50">
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">III</td>
-                                                <td className="border border-gray-400 px-2 py-1.5" colSpan={8}>Đảng phí trích giữ lại ở các cấp</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-4">1. Kỳ báo cáo (05+06+07)</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">04</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(chiBoGiu)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">({RETENTION_RATES.chiBoGiu}%)</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-6">1.1 Chi bộ, đảng bộ bộ phận</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">05</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-6">1.2 Tổ chức cơ sở đảng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">06</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-6">1.3 Cấp trên cơ sở</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">07</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-4">2. Từ đầu năm đến cuối kỳ báo cáo (09+10+11)</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">08</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu * reportMonth)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(chiBoGiu * reportMonth)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-6">2.1 Chi bộ, đảng bộ bộ phận</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">09</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu * reportMonth)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu * reportMonth)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-6">2.2 Tổ chức cơ sở đảng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">10</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-6">2.3 Cấp trên cơ sở</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">11</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">-</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
-                                            </tr>
-                                            {/* IV. Đảng phí nộp cấp trên (70%) */}
-                                            <tr className="font-bold bg-amber-50">
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">IV</td>
-                                                <td className="border border-gray-400 px-2 py-1.5" colSpan={8}>Đảng phí nộp cấp trên của cấp báo cáo</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-4">1. Số phải nộp kỳ báo cáo (02–04)</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">12</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(nopCapTren)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(nopCapTren)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">({RETENTION_RATES.nopCapTren}%)</td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-4">2. Từ đầu năm đến cuối kỳ báo cáo (03–08)</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">13</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(nopCapTren * reportMonth)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(nopCapTren * reportMonth)}</td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
-                                            </tr>
-                                            <tr>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 pl-4">3. Số còn nợ chưa nộp cấp trên đến cuối kỳ báo cáo</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-center">14</td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                <td className="border border-gray-400 px-2 py-1.5"></td>
+
+                                            {/* Data rows */}
+                                            {allEntries.map((entry, idx) => {
+                                                const inc = calcTotalIncome(entry);
+                                                const exp = calcTotalExpense(entry);
+                                                // Running balance
+                                                let runBal = financeOpeningBalance;
+                                                for (let i = 0; i <= idx; i++) {
+                                                    runBal += calcTotalIncome(allEntries[i]) - calcTotalExpense(allEntries[i]);
+                                                }
+                                                const isAuto = entry.entry_type === 'auto_dang_phi';
+                                                return (
+                                                    <tr key={entry.id || idx} className={`${isAuto ? 'bg-amber-50/60' : idx % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'} hover:bg-gray-100/50`}>
+                                                        <td className="border border-gray-300 px-2 py-1.5 text-center text-gray-600">{entry.entry_date?.slice(5) || ''}</td>
+                                                        <td className="border border-gray-300 px-2 py-1.5 text-center text-gray-500 font-mono">{entry.ref_number}</td>
+                                                        <td className="border border-gray-300 px-2 py-1.5">
+                                                            <span className="text-gray-800">{entry.description}</span>
+                                                            {isAuto && <span className="ml-1 inline-block bg-amber-200 text-amber-800 text-[8px] px-1.5 py-0.5 rounded-full font-bold uppercase">Tự động</span>}
+                                                        </td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right text-emerald-700">{fmt(entry.thu_dang_phi)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right text-emerald-700">{fmt(entry.thu_kinh_phi_cap_tren)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right text-emerald-700">{fmt(entry.thu_khac)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right font-bold text-emerald-800">{fmt(inc)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right text-red-600">{fmt(entry.chi_bao_tap_chi)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right text-red-600">{fmt(entry.chi_dai_hoi)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right text-red-600">{fmt(entry.chi_khen_thuong)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right text-red-600">{fmt(entry.chi_ho_tro)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right text-red-600">{fmt(entry.chi_phu_cap_cap_uy)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right text-red-600">{fmt(entry.chi_khac)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-right font-bold text-red-800">{fmt(exp)}</td>
+                                                        <td className={`border border-gray-300 px-2 py-1.5 text-right font-bold ${runBal >= 0 ? 'text-blue-700' : 'text-red-600'}`}>{fmt(runBal)}</td>
+                                                        <td className="border border-gray-300 px-1 py-1.5 text-center">
+                                                            {!isAuto && (
+                                                                <div className="flex items-center gap-0.5 justify-center">
+                                                                    <button onClick={() => { setEditingFinanceEntry(entry); setShowFinanceForm(true); }} className="p-0.5 hover:bg-blue-100 rounded transition-colors" title="Sửa">
+                                                                        <Pencil className="w-3 h-3 text-blue-500" />
+                                                                    </button>
+                                                                    <button onClick={() => handleDeleteEntry(entry.id!)} className="p-0.5 hover:bg-red-100 rounded transition-colors" title="Xóa">
+                                                                        <Trash2 className="w-3 h-3 text-red-400" />
+                                                                    </button>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })}
+
+                                            {/* Period totals row */}
+                                            <tr className="bg-gray-100 font-bold border-t-2 border-gray-400">
+                                                <td className="border border-gray-300 px-2 py-2"></td>
+                                                <td className="border border-gray-300 px-2 py-2"></td>
+                                                <td className="border border-gray-300 px-2 py-2 text-gray-800 uppercase text-[10px]">Cộng phát trong kỳ</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-emerald-800">{fmt(allEntries.reduce((s, e) => s + e.thu_dang_phi, 0))}</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-emerald-800">{fmt(allEntries.reduce((s, e) => s + e.thu_kinh_phi_cap_tren, 0))}</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-emerald-800">{fmt(allEntries.reduce((s, e) => s + e.thu_khac, 0))}</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-emerald-900 text-sm">{fmt(sumIncome)}</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-red-800">{fmt(allEntries.reduce((s, e) => s + e.chi_bao_tap_chi, 0))}</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-red-800">{fmt(allEntries.reduce((s, e) => s + e.chi_dai_hoi, 0))}</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-red-800">{fmt(allEntries.reduce((s, e) => s + e.chi_khen_thuong, 0))}</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-red-800">{fmt(allEntries.reduce((s, e) => s + e.chi_ho_tro, 0))}</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-red-800">{fmt(allEntries.reduce((s, e) => s + e.chi_phu_cap_cap_uy, 0))}</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-red-800">{fmt(allEntries.reduce((s, e) => s + e.chi_khac, 0))}</td>
+                                                <td className="border border-gray-300 px-1 py-2 text-right text-red-900 text-sm">{fmt(sumExpense)}</td>
+                                                <td className={`border border-gray-300 px-2 py-2 text-right text-sm ${closingBalance >= 0 ? 'text-blue-800' : 'text-red-700'}`}>{fmt(closingBalance)}</td>
+                                                <td className="border border-gray-300"></td>
                                             </tr>
                                         </tbody>
                                     </table>
                                 </div>
 
-                                {/* Footer */}
-                                <div className="px-6 pb-6">
-                                    <div className="flex justify-between items-end mt-4">
-                                        <div className="text-center">
-                                            <p className="text-xs font-bold underline">Người lập</p>
-                                        </div>
-                                        <div className="text-center">
-                                            <p className="text-xs italic">……………, ngày …… tháng …… năm {reportYear}</p>
-                                            <p className="text-xs font-bold">T/M cấp ủy</p>
+                                {financeEntries.length === 0 && (
+                                    <div className="p-8 text-center">
+                                        <BookOpen className="w-10 h-10 text-gray-200 mx-auto mb-2" />
+                                        <p className="text-xs text-gray-400">Chưa có giao dịch thủ công nào. Nhấn "Thêm giao dịch" để bắt đầu.</p>
+                                        <button onClick={loadFinanceData} className="mt-2 px-3 py-1 bg-teal-100 text-teal-700 rounded-lg text-[10px] font-bold hover:bg-teal-200 transition-colors">
+                                            <RefreshCw className="w-3 h-3 inline mr-1" /> Tải dữ liệu
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* ─── ADD/EDIT FINANCE ENTRY MODAL ── */}
+                            {showFinanceForm && (() => {
+                                const isEdit = !!editingFinanceEntry?.id && editingFinanceEntry.id !== '__auto_dp__';
+                                const initial = isEdit ? editingFinanceEntry! : emptyEntry(financeMonth, financeYear);
+                                return (
+                                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowFinanceForm(false); setEditingFinanceEntry(null); }}>
+                                        <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                                            <div className="bg-gradient-to-r from-teal-600 to-teal-700 px-5 py-4 flex items-center justify-between flex-shrink-0">
+                                                <span className="text-sm font-bold text-white flex items-center gap-2">
+                                                    {isEdit ? <Pencil className="w-4 h-4" /> : <PlusCircle className="w-4 h-4" />}
+                                                    {isEdit ? 'Sửa giao dịch' : 'Thêm giao dịch mới'}
+                                                </span>
+                                                <button onClick={() => { setShowFinanceForm(false); setEditingFinanceEntry(null); }} className="text-white/70 hover:text-white"><X className="w-5 h-5" /></button>
+                                            </div>
+                                            <form onSubmit={async (ev) => {
+                                                ev.preventDefault();
+                                                const fd = new FormData(ev.currentTarget);
+                                                const entry: FinanceEntry = {
+                                                    ...initial,
+                                                    entry_date: fd.get('entry_date') as string || initial.entry_date,
+                                                    ref_number: fd.get('ref_number') as string || '',
+                                                    description: fd.get('description') as string || '',
+                                                    entry_type: 'manual',
+                                                    thu_dang_phi: 0,
+                                                    thu_kinh_phi_cap_tren: Number(fd.get('thu_kinh_phi_cap_tren')) || 0,
+                                                    thu_khac: Number(fd.get('thu_khac')) || 0,
+                                                    chi_bao_tap_chi: Number(fd.get('chi_bao_tap_chi')) || 0,
+                                                    chi_dai_hoi: Number(fd.get('chi_dai_hoi')) || 0,
+                                                    chi_khen_thuong: Number(fd.get('chi_khen_thuong')) || 0,
+                                                    chi_ho_tro: Number(fd.get('chi_ho_tro')) || 0,
+                                                    chi_phu_cap_cap_uy: Number(fd.get('chi_phu_cap_cap_uy')) || 0,
+                                                    chi_khac: Number(fd.get('chi_khac')) || 0,
+                                                    month: financeMonth,
+                                                    year: financeYear,
+                                                };
+                                                await handleSaveEntry(entry);
+                                            }} className="overflow-y-auto flex-1 p-5 space-y-4">
+                                                {/* Basic info */}
+                                                <div className="grid grid-cols-3 gap-3">
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Ngày</label>
+                                                        <input type="date" name="entry_date" defaultValue={initial.entry_date}
+                                                            className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-teal-400 focus:ring-0" />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Số hiệu</label>
+                                                        <input type="text" name="ref_number" defaultValue={initial.ref_number} placeholder="Số CT"
+                                                            className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-teal-400 focus:ring-0" />
+                                                    </div>
+                                                    <div className="col-span-1">
+                                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Diễn giải</label>
+                                                        <input type="text" name="description" defaultValue={initial.description} placeholder="Nội dung"
+                                                            className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-teal-400 focus:ring-0" />
+                                                    </div>
+                                                </div>
+
+                                                {/* Income section */}
+                                                <div>
+                                                    <h4 className="text-[10px] font-black text-emerald-700 uppercase tracking-wider mb-2 border-b border-emerald-100 pb-1">Phần thu</h4>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-gray-500 mb-1">KP cấp trên cấp (2)</label>
+                                                            <input type="number" name="thu_kinh_phi_cap_tren" defaultValue={initial.thu_kinh_phi_cap_tren || ''}
+                                                                className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-emerald-400" placeholder="0" />
+                                                        </div>
+                                                        <div>
+                                                            <label className="block text-[10px] font-bold text-gray-500 mb-1">Thu khác (3)</label>
+                                                            <input type="number" name="thu_khac" defaultValue={initial.thu_khac || ''}
+                                                                className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-emerald-400" placeholder="0" />
+                                                        </div>
+                                                    </div>
+                                                    <p className="text-[9px] text-gray-400 mt-1 italic">* Đảng phí (1) tự động lấy từ danh sách đóng ĐP × 70%</p>
+                                                </div>
+
+                                                {/* Expense section */}
+                                                <div>
+                                                    <h4 className="text-[10px] font-black text-red-700 uppercase tracking-wider mb-2 border-b border-red-100 pb-1">Phần chi</h4>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        {EXPENSE_FIELDS.map(f => (
+                                                            <div key={f.key}>
+                                                                <label className="block text-[10px] font-bold text-gray-500 mb-1">{f.label} ({f.code})</label>
+                                                                <input type="number" name={f.key} defaultValue={(initial as any)[f.key] || ''}
+                                                                    className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-red-400" placeholder="0" />
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                <div className="pt-3 border-t border-gray-100 flex justify-end gap-2">
+                                                    <button type="button" onClick={() => { setShowFinanceForm(false); setEditingFinanceEntry(null); }}
+                                                        className="px-4 py-2 bg-gray-100 text-gray-600 rounded-xl text-xs font-bold hover:bg-gray-200 transition-colors">Hủy</button>
+                                                    <button type="submit"
+                                                        className="px-4 py-2 bg-teal-600 text-white rounded-xl text-xs font-bold hover:bg-teal-700 transition-colors shadow-sm">
+                                                        {isEdit ? 'Cập nhật' : 'Thêm mới'}
+                                                    </button>
+                                                </div>
+                                            </form>
                                         </div>
                                     </div>
-                                </div>
-                            </div>
-                        </>);
-                    })()}
+                                );
+                            })()}
+                        </div>
+                    );
+                })()
+            }
 
-                </div>
-            )}
 
             {/* ─── SETTINGS TAB ──────────────────────────── */}
-            {tabMode === 'settings' && (
-                <div className="space-y-6">
-                    <div className="bg-white border-2 border-amber-200 rounded-2xl p-6">
-                        <div className="flex items-center gap-3 mb-6">
-                            <div className="bg-amber-100 p-2 rounded-xl">
-                                <Settings className="w-5 h-5 text-amber-600" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-black text-gray-800 uppercase tracking-wider">Cấu hình Chi bộ & Ngân hàng</h3>
-                                <p className="text-[10px] text-gray-500">Thông tin này dùng để xuất báo cáo và tạo mã QR đóng đảng phí</p>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Branch Settings */}
-                            <div className="space-y-4">
-                                <h4 className="text-xs font-bold text-amber-700 uppercase tracking-widest border-b border-amber-100 pb-2">Thông tin tổ chức</h4>
-                                <div className="space-y-3">
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tên Chi bộ</label>
-                                        <input
-                                            type="text"
-                                            value={settings.branch_name}
-                                            onChange={e => setSettings({ ...settings, branch_name: e.target.value })}
-                                            placeholder="Ví dụ: CHI BỘ 1"
-                                            className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all font-bold"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Đảng bộ cấp trên</label>
-                                        <input
-                                            type="text"
-                                            value={settings.superior_party}
-                                            onChange={e => setSettings({ ...settings, superior_party: e.target.value })}
-                                            placeholder="Ví dụ: ĐẢNG BỘ PHƯỜNG THUẬN AN"
-                                            className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all font-bold"
-                                        />
-                                    </div>
+            {
+                tabMode === 'settings' && (
+                    <div className="space-y-6">
+                        <div className="bg-white border-2 border-amber-200 rounded-2xl p-6">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="bg-amber-100 p-2 rounded-xl">
+                                    <Settings className="w-5 h-5 text-amber-600" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-wider">Cấu hình Chi bộ & Ngân hàng</h3>
+                                    <p className="text-[10px] text-gray-500">Thông tin này dùng để xuất báo cáo và tạo mã QR đóng đảng phí</p>
                                 </div>
                             </div>
 
-                            {/* Bank Settings */}
-                            <div className="space-y-4">
-                                <h4 className="text-xs font-bold text-amber-700 uppercase tracking-widest border-b border-amber-100 pb-2">Tài khoản nhận Đảng phí</h4>
-                                <div className="space-y-3">
-                                    <div className="grid grid-cols-2 gap-3">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Branch Settings */}
+                                <div className="space-y-4">
+                                    <h4 className="text-xs font-bold text-amber-700 uppercase tracking-widest border-b border-amber-100 pb-2">Thông tin tổ chức</h4>
+                                    <div className="space-y-3">
                                         <div>
-                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Ngân hàng (VietQR ID)</label>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tên Chi bộ</label>
                                             <input
                                                 type="text"
-                                                value={settings.bank_name}
-                                                onChange={e => setSettings({ ...settings, bank_name: e.target.value })}
-                                                placeholder="Ví dụ: MB, VCB, ICB"
+                                                value={settings.branch_name}
+                                                onChange={e => setSettings({ ...settings, branch_name: e.target.value })}
+                                                placeholder="Ví dụ: CHI BỘ 1"
                                                 className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all font-bold"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Số tài khoản</label>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Đảng bộ cấp trên</label>
                                             <input
                                                 type="text"
-                                                value={settings.bank_account_number}
-                                                onChange={e => setSettings({ ...settings, bank_account_number: e.target.value })}
-                                                className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs font-mono focus:border-amber-400 focus:ring-0 transition-all font-bold"
+                                                value={settings.superior_party}
+                                                onChange={e => setSettings({ ...settings, superior_party: e.target.value })}
+                                                placeholder="Ví dụ: ĐẢNG BỘ PHƯỜNG THUẬN AN"
+                                                className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all font-bold"
                                             />
                                         </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Chủ tài khoản (Tiếng Việt không dấu)</label>
-                                        <input
-                                            type="text"
-                                            value={settings.account_holder_name}
-                                            onChange={e => setSettings({ ...settings, account_holder_name: e.target.value })}
-                                            placeholder="Ví dụ: NGUYEN VAN A"
-                                            className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all uppercase font-bold"
-                                        />
+                                </div>
+
+                                {/* Bank Settings */}
+                                <div className="space-y-4">
+                                    <h4 className="text-xs font-bold text-amber-700 uppercase tracking-widest border-b border-amber-100 pb-2">Tài khoản nhận Đảng phí</h4>
+                                    <div className="space-y-3">
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Ngân hàng (VietQR ID)</label>
+                                                <input
+                                                    type="text"
+                                                    value={settings.bank_name}
+                                                    onChange={e => setSettings({ ...settings, bank_name: e.target.value })}
+                                                    placeholder="Ví dụ: MB, VCB, ICB"
+                                                    className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all font-bold"
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Số tài khoản</label>
+                                                <input
+                                                    type="text"
+                                                    value={settings.bank_account_number}
+                                                    onChange={e => setSettings({ ...settings, bank_account_number: e.target.value })}
+                                                    className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs font-mono focus:border-amber-400 focus:ring-0 transition-all font-bold"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">Chủ tài khoản (Tiếng Việt không dấu)</label>
+                                            <input
+                                                type="text"
+                                                value={settings.account_holder_name}
+                                                onChange={e => setSettings({ ...settings, account_holder_name: e.target.value })}
+                                                placeholder="Ví dụ: NGUYEN VAN A"
+                                                className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all uppercase font-bold"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                {settingsSaved && (
-                                    <span className="text-xs font-bold text-green-600 flex items-center gap-1 animate-pulse">
-                                        <CheckCircle2 className="w-4 h-4" /> Đã lưu thành công!
-                                    </span>
-                                )}
+                            <div className="mt-8 pt-6 border-t border-gray-100 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    {settingsSaved && (
+                                        <span className="text-xs font-bold text-green-600 flex items-center gap-1 animate-pulse">
+                                            <CheckCircle2 className="w-4 h-4" /> Đã lưu thành công!
+                                        </span>
+                                    )}
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        setSettingsLoading(true);
+                                        const success = await upsertPartySettings(settings);
+                                        if (success) {
+                                            setSettingsSaved(true);
+                                            setTimeout(() => setSettingsSaved(false), 3000);
+                                        }
+                                        setSettingsLoading(false);
+                                    }}
+                                    disabled={settingsLoading}
+                                    className="px-6 py-2 bg-amber-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-amber-700 disabled:opacity-50 transition-all shadow-md flex items-center gap-2"
+                                >
+                                    {settingsLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Landmark className="w-4 h-4" />}
+                                    Lưu cấu hình
+                                </button>
                             </div>
-                            <button
-                                onClick={async () => {
-                                    setSettingsLoading(true);
-                                    const success = await upsertPartySettings(settings);
-                                    if (success) {
-                                        setSettingsSaved(true);
-                                        setTimeout(() => setSettingsSaved(false), 3000);
-                                    }
-                                    setSettingsLoading(false);
-                                }}
-                                disabled={settingsLoading}
-                                className="px-6 py-2 bg-amber-600 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-amber-700 disabled:opacity-50 transition-all shadow-md flex items-center gap-2"
-                            >
-                                {settingsLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Landmark className="w-4 h-4" />}
-                                Lưu cấu hình
-                            </button>
                         </div>
-                    </div>
 
-                    <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl p-4 flex items-start gap-3">
-                        <Info className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
-                        <div className="text-[10px] text-blue-700 leading-relaxed">
-                            <p className="font-bold uppercase mb-1 underline">Lưu ý quan trọng:</p>
-                            <ul className="list-disc pl-4 space-y-1">
-                                <li><strong>Mã ngân hàng:</strong> Sử dụng mã định danh VietQR (Ví dụ: MB Bank = <code>MB</code>, Vietcombank = <code>VCB</code>, Agribank = <code>VBA</code>, ICB, v.v.).</li>
-                                <li><strong>Tính riêng tư:</strong> Thông tin này là riêng biệt cho từng tài khoản chi bộ.</li>
-                                <li><strong>Mã QR:</strong> Sau khi lưu, mã QR đóng đảng phí sẽ tự động cập nhật theo số tài khoản này.</li>
-                            </ul>
+                        <div className="bg-blue-50 border-2 border-blue-100 rounded-2xl p-4 flex items-start gap-3">
+                            <Info className="w-5 h-5 text-blue-500 flex-shrink-0 mt-0.5" />
+                            <div className="text-[10px] text-blue-700 leading-relaxed">
+                                <p className="font-bold uppercase mb-1 underline">Lưu ý quan trọng:</p>
+                                <ul className="list-disc pl-4 space-y-1">
+                                    <li><strong>Mã ngân hàng:</strong> Sử dụng mã định danh VietQR (Ví dụ: MB Bank = <code>MB</code>, Vietcombank = <code>VCB</code>, Agribank = <code>VBA</code>, ICB, v.v.).</li>
+                                    <li><strong>Tính riêng tư:</strong> Thông tin này là riêng biệt cho từng tài khoản chi bộ.</li>
+                                    <li><strong>Mã QR:</strong> Sau khi lưu, mã QR đóng đảng phí sẽ tự động cập nhật theo số tài khoản này.</li>
+                                </ul>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Reference notice */}
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex items-start gap-2">
@@ -1913,224 +2755,400 @@ const PartyFeeAssistant: React.FC = () => {
             </div>
 
             {/* ─── SEPAY RESULTS MODAL ──────────────── */}
-            {showSepayModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowSepayModal(false)}>
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
-                        {/* Header */}
-                        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-5 py-4 flex items-center justify-between flex-shrink-0">
-                            <div className="flex items-center gap-2 text-white">
-                                <Landmark className="w-5 h-5" />
-                                <span className="text-sm font-bold">Kết quả kiểm tra SePay</span>
-                                <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px]">T{String(selectedMonth).padStart(2, '0')}/{selectedYear}</span>
+            {
+                showSepayModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowSepayModal(false)}>
+                        <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                            {/* Header */}
+                            <div className="bg-gradient-to-r from-blue-600 to-indigo-700 px-5 py-4 flex items-center justify-between flex-shrink-0">
+                                <div className="flex items-center gap-2 text-white">
+                                    <Landmark className="w-5 h-5" />
+                                    <span className="text-sm font-bold">Kết quả kiểm tra SePay</span>
+                                    <span className="bg-white/20 px-2 py-0.5 rounded-full text-[10px]">T{String(selectedMonth).padStart(2, '0')}/{selectedYear}</span>
+                                </div>
+                                <button onClick={() => setShowSepayModal(false)} className="text-white/70 hover:text-white transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
                             </div>
-                            <button onClick={() => setShowSepayModal(false)} className="text-white/70 hover:text-white transition-colors">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
 
-                        {/* Content */}
-                        <div className="overflow-y-auto flex-1 p-5 space-y-3">
-                            {sepayError && (
-                                <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 flex items-start gap-2">
-                                    <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                                    <div>
-                                        <p className="text-xs font-bold text-red-700">Lỗi kết nối SePay</p>
-                                        <p className="text-[10px] text-red-600 mt-0.5">{sepayError}</p>
-                                    </div>
-                                </div>
-                            )}
-
-                            {sepayResults && sepayResults.length === 0 && !sepayError && (
-                                <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 text-center">
-                                    <Landmark className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-                                    <p className="text-sm font-bold text-gray-500">Không tìm thấy giao dịch</p>
-                                    <p className="text-[10px] text-gray-400 mt-1">Không có chuyển khoản nào trong tháng {String(selectedMonth).padStart(2, '0')}/{selectedYear}</p>
-                                </div>
-                            )}
-
-                            {sepayResults && sepayResults.length > 0 && (
-                                <>
-                                    {/* Summary */}
-                                    <div className="grid grid-cols-3 gap-2">
-                                        <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
-                                            <p className="text-lg font-black text-green-700">{sepayResults.filter(r => r.confidence === 'exact').length}</p>
-                                            <p className="text-[9px] font-bold text-green-600 uppercase">Khớp chính xác</p>
-                                        </div>
-                                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
-                                            <p className="text-lg font-black text-amber-700">{sepayResults.filter(r => r.confidence === 'partial').length}</p>
-                                            <p className="text-[9px] font-bold text-amber-600 uppercase">Khớp gần đúng</p>
-                                        </div>
-                                        <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
-                                            <p className="text-lg font-black text-red-700">{sepayResults.filter(r => r.confidence === 'none').length}</p>
-                                            <p className="text-[9px] font-bold text-red-600 uppercase">Không khớp</p>
+                            {/* Content */}
+                            <div className="overflow-y-auto flex-1 p-5 space-y-3">
+                                {sepayError && (
+                                    <div className="bg-red-50 border-2 border-red-200 rounded-xl p-3 flex items-start gap-2">
+                                        <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                                        <div>
+                                            <p className="text-xs font-bold text-red-700">Lỗi kết nối SePay</p>
+                                            <p className="text-[10px] text-red-600 mt-0.5">{sepayError}</p>
                                         </div>
                                     </div>
+                                )}
 
-                                    {/* Matched transactions */}
-                                    {sepayResults.filter(r => r.confidence !== 'none').length > 0 && (
-                                        <div>
-                                            <h4 className="text-[10px] font-black text-green-800 uppercase tracking-wider mb-2 flex items-center gap-1">
-                                                <CheckCircle2 className="w-3.5 h-3.5" /> Giao dịch đã khớp — tự động đánh dấu "Đã nộp"
-                                            </h4>
-                                            <div className="space-y-1.5">
-                                                {sepayResults.filter(r => r.confidence !== 'none').map((r, i) => (
-                                                    <div key={i} className={`rounded-lg p-2.5 text-xs border ${r.confidence === 'exact' ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="font-bold text-gray-800">{r.memberName}</span>
-                                                            <span className="font-bold text-green-700">{r.transaction.transfer_amount.toLocaleString('vi-VN')}đ</span>
-                                                        </div>
-                                                        <p className="text-[10px] text-gray-500 mt-0.5">{r.matchedBy}</p>
-                                                        <p className="text-[10px] text-gray-400 mt-0.5 font-mono truncate">CK: {r.transaction.transaction_content}</p>
-                                                    </div>
-                                                ))}
+                                {sepayResults && sepayResults.length === 0 && !sepayError && (
+                                    <div className="bg-gray-50 border-2 border-gray-200 rounded-xl p-6 text-center">
+                                        <Landmark className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                                        <p className="text-sm font-bold text-gray-500">Không tìm thấy giao dịch</p>
+                                        <p className="text-[10px] text-gray-400 mt-1">Không có chuyển khoản nào trong tháng {String(selectedMonth).padStart(2, '0')}/{selectedYear}</p>
+                                    </div>
+                                )}
+
+                                {sepayResults && sepayResults.length > 0 && (
+                                    <>
+                                        {/* Summary */}
+                                        <div className="grid grid-cols-3 gap-2">
+                                            <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                                                <p className="text-lg font-black text-green-700">{sepayResults.filter(r => r.confidence === 'exact').length}</p>
+                                                <p className="text-[9px] font-bold text-green-600 uppercase">Khớp chính xác</p>
+                                            </div>
+                                            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-center">
+                                                <p className="text-lg font-black text-amber-700">{sepayResults.filter(r => r.confidence === 'partial').length}</p>
+                                                <p className="text-[9px] font-bold text-amber-600 uppercase">Khớp gần đúng</p>
+                                            </div>
+                                            <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-center">
+                                                <p className="text-lg font-black text-red-700">{sepayResults.filter(r => r.confidence === 'none').length}</p>
+                                                <p className="text-[9px] font-bold text-red-600 uppercase">Không khớp</p>
                                             </div>
                                         </div>
-                                    )}
 
-                                    {/* Unmatched transactions */}
-                                    {sepayResults.filter(r => r.confidence === 'none').length > 0 && (
-                                        <div>
-                                            <h4 className="text-[10px] font-black text-red-800 uppercase tracking-wider mb-2 flex items-center gap-1">
-                                                <AlertTriangle className="w-3.5 h-3.5" /> Giao dịch chưa khớp
-                                            </h4>
-                                            <div className="space-y-1.5">
-                                                {sepayResults.filter(r => r.confidence === 'none').map((r, i) => (
-                                                    <div key={i} className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs">
-                                                        <div className="flex items-center justify-between">
-                                                            <span className="font-mono text-gray-600 truncate flex-1">{r.transaction.transaction_content}</span>
-                                                            <span className="font-bold text-gray-700 ml-2">{r.transaction.transfer_amount.toLocaleString('vi-VN')}đ</span>
+                                        {/* Matched transactions */}
+                                        {sepayResults.filter(r => r.confidence !== 'none').length > 0 && (
+                                            <div>
+                                                <h4 className="text-[10px] font-black text-green-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                                    <CheckCircle2 className="w-3.5 h-3.5" /> Giao dịch đã khớp — tự động đánh dấu "Đã nộp"
+                                                </h4>
+                                                <div className="space-y-1.5">
+                                                    {sepayResults.filter(r => r.confidence !== 'none').map((r, i) => (
+                                                        <div key={i} className={`rounded-lg p-2.5 text-xs border ${r.confidence === 'exact' ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="font-bold text-gray-800">{r.memberName}</span>
+                                                                <span className="font-bold text-green-700">{r.transaction.transfer_amount.toLocaleString('vi-VN')}đ</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-gray-500 mt-0.5">{r.matchedBy}</p>
+                                                            <p className="text-[10px] text-gray-400 mt-0.5 font-mono truncate">CK: {r.transaction.transaction_content}</p>
                                                         </div>
-                                                        <p className="text-[10px] text-red-500 mt-0.5">{r.matchedBy}</p>
-                                                    </div>
-                                                ))}
+                                                    ))}
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
-                                </>
-                            )}
+                                        )}
+
+                                        {/* Unmatched transactions */}
+                                        {sepayResults.filter(r => r.confidence === 'none').length > 0 && (
+                                            <div>
+                                                <h4 className="text-[10px] font-black text-red-800 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                                    <AlertTriangle className="w-3.5 h-3.5" /> Giao dịch chưa khớp
+                                                </h4>
+                                                <div className="space-y-1.5">
+                                                    {sepayResults.filter(r => r.confidence === 'none').map((r, i) => (
+                                                        <div key={i} className="bg-gray-50 border border-gray-200 rounded-lg p-2.5 text-xs">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="font-mono text-gray-600 truncate flex-1">{r.transaction.transaction_content}</span>
+                                                                <span className="font-bold text-gray-700 ml-2">{r.transaction.transfer_amount.toLocaleString('vi-VN')}đ</span>
+                                                            </div>
+                                                            <p className="text-[10px] text-red-500 mt-0.5">{r.matchedBy}</p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </>
+                                )}
+                            </div>
+
+                            {/* Footer */}
+                            <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex-shrink-0">
+                                <div className="flex items-center justify-between">
+                                    <p className="text-[10px] text-gray-400">Nguồn: SePay.vn • TK: {settings.bank_account_number || BANK_CONFIG.accountNo}</p>
+                                    <button
+                                        onClick={() => setShowSepayModal(false)}
+                                        className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                                    >
+                                        Đóng
+                                    </button>
+                                </div>
+                            </div>
                         </div>
+                    </div>
+                )
+            }
 
-                        {/* Footer */}
-                        <div className="px-5 py-3 bg-gray-50 border-t border-gray-200 flex-shrink-0">
-                            <div className="flex items-center justify-between">
-                                <p className="text-[10px] text-gray-400">Nguồn: SePay.vn • TK: {settings.bank_account_number || BANK_CONFIG.accountNo}</p>
+            {/* ─── QR PAYMENT MODAL ─────────────────── */}
+            {
+                qrMember && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setQrMember(null)}>
+                        <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
+                            {/* Modal header */}
+                            <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4 flex items-center justify-between">
+                                <div className="flex items-center gap-2 text-white">
+                                    <QrCode className="w-5 h-5" />
+                                    <span className="text-sm font-bold">Mã QR đóng đảng phí</span>
+                                </div>
+                                <button onClick={() => setQrMember(null)} className="text-white/70 hover:text-white transition-colors">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Member info */}
+                            <div className="px-5 pt-4 pb-2">
+                                <p className="text-sm font-bold text-gray-800">{qrMember.hoTen || 'Chưa có tên'}</p>
+                                <p className="text-xs text-gray-500">{qrMember.chucVu || 'Đảng viên'} • {MEMBER_TYPES.find(t => t.key === qrMember.memberType)?.label}</p>
+                                <div className="mt-2 flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2">
+                                    <span className="text-xs text-amber-700 font-medium">Đảng phí tháng {String(selectedMonth).padStart(2, '0')}/{selectedYear}</span>
+                                    <span className="text-lg font-black text-amber-800">{formatCurrency(qrMember.feeAmount)}</span>
+                                </div>
+                            </div>
+
+                            {/* QR Code */}
+                            <div className="px-5 py-3 flex justify-center">
+                                {qrMember.feeAmount > 0 ? (
+                                    <img
+                                        src={getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear, {
+                                            bankId: settings.bank_name,
+                                            accountNo: settings.bank_account_number,
+                                            accountName: settings.account_holder_name
+                                        })}
+                                        alt={`QR thanh toán ${qrMember.hoTen}`}
+                                        className="w-64 h-64 object-contain rounded-lg border border-gray-100"
+                                    />
+                                ) : (
+                                    <div className="w-64 h-64 flex items-center justify-center bg-green-50 rounded-lg border-2 border-dashed border-green-200">
+                                        <div className="text-center">
+                                            <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-2" />
+                                            <p className="text-sm font-bold text-green-600">Miễn đóng</p>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Bank info */}
+                            <div className="px-5 pb-3">
+                                <div className="bg-gray-50 rounded-lg px-3 py-2 space-y-1 text-xs text-gray-600">
+                                    <div className="flex justify-between"><span>Ngân hàng:</span><span className="font-bold">{settings.bank_name || BANK_CONFIG.bankId}</span></div>
+                                    <div className="flex justify-between"><span>Số TK:</span><span className="font-bold font-mono">{settings.bank_account_number || BANK_CONFIG.accountNo}</span></div>
+                                    <div className="flex justify-between"><span>Tên TK:</span><span className="font-bold">{settings.account_holder_name || BANK_CONFIG.accountName}</span></div>
+                                    <div className="flex justify-between"><span>Nội dung CK:</span><span className="font-bold text-blue-600">DP T{String(selectedMonth).padStart(2, '0')}/{selectedYear} {qrMember.hoTen}</span></div>
+                                </div>
+                            </div>
+
+                            {/* Action buttons */}
+                            <div className="px-5 pb-5 grid grid-cols-3 gap-2">
                                 <button
-                                    onClick={() => setShowSepayModal(false)}
-                                    className="px-4 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition-colors"
+                                    onClick={() => {
+                                        const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear, {
+                                            bankId: settings.bank_name,
+                                            accountNo: settings.bank_account_number,
+                                            accountName: settings.account_holder_name
+                                        });
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = `QR_${qrMember.hoTen.replace(/\s/g, '_')}_T${String(selectedMonth).padStart(2, '0')}_${selectedYear}.png`;
+                                        a.target = '_blank';
+                                        a.click();
+                                    }}
+                                    className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-gray-600"
                                 >
-                                    Đóng
+                                    <Download className="w-4 h-4" />
+                                    <span className="text-[10px] font-bold">Tải QR</span>
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear, {
+                                            bankId: settings.bank_name,
+                                            accountNo: settings.bank_account_number,
+                                            accountName: settings.account_holder_name
+                                        });
+                                        navigator.clipboard.writeText(url);
+                                    }}
+                                    className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors text-blue-600"
+                                >
+                                    <Share2 className="w-4 h-4" />
+                                    <span className="text-[10px] font-bold">Copy link</span>
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        updateMember(qrMember.id, { paid: true });
+                                        setQrMember(null);
+                                    }}
+                                    className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-green-50 hover:bg-green-100 transition-colors text-green-600"
+                                >
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span className="text-[10px] font-bold">Đã nộp</span>
                                 </button>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
-            {/* ─── QR PAYMENT MODAL ─────────────────── */}
-            {qrMember && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setQrMember(null)}>
-                    <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full mx-4 overflow-hidden" onClick={e => e.stopPropagation()}>
-                        {/* Modal header */}
-                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 px-5 py-4 flex items-center justify-between">
-                            <div className="flex items-center gap-2 text-white">
-                                <QrCode className="w-5 h-5" />
-                                <span className="text-sm font-bold">Mã QR đóng đảng phí</span>
+            {/* ─── Salary Adjustment Modal ─── */}
+            {
+                salaryModal.open && (
+                    <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4" onClick={() => setSalaryModal(s => ({ ...s, open: false }))}>
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+                            <div className="bg-gradient-to-r from-amber-600 to-orange-600 px-6 py-4">
+                                <h3 className="text-white text-sm font-bold flex items-center gap-2">
+                                    <Pencil className="w-4 h-4" /> Điều chỉnh Lương / Trợ cấp
+                                </h3>
+                                <p className="text-white/80 text-xs mt-1">Đảng viên: <span className="font-bold text-white">{salaryModal.memberName}</span></p>
                             </div>
-                            <button onClick={() => setQrMember(null)} className="text-white/70 hover:text-white transition-colors">
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-
-                        {/* Member info */}
-                        <div className="px-5 pt-4 pb-2">
-                            <p className="text-sm font-bold text-gray-800">{qrMember.hoTen || 'Chưa có tên'}</p>
-                            <p className="text-xs text-gray-500">{qrMember.chucVu || 'Đảng viên'} • {MEMBER_TYPES.find(t => t.key === qrMember.memberType)?.label}</p>
-                            <div className="mt-2 flex items-center justify-between bg-amber-50 rounded-lg px-3 py-2">
-                                <span className="text-xs text-amber-700 font-medium">Đảng phí tháng {String(selectedMonth).padStart(2, '0')}/{selectedYear}</span>
-                                <span className="text-lg font-black text-amber-800">{formatCurrency(qrMember.feeAmount)}</span>
-                            </div>
-                        </div>
-
-                        {/* QR Code */}
-                        <div className="px-5 py-3 flex justify-center">
-                            {qrMember.feeAmount > 0 ? (
-                                <img
-                                    src={getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear, {
-                                        bankId: settings.bank_name,
-                                        accountNo: settings.bank_account_number,
-                                        accountName: settings.account_holder_name
-                                    })}
-                                    alt={`QR thanh toán ${qrMember.hoTen}`}
-                                    className="w-64 h-64 object-contain rounded-lg border border-gray-100"
-                                />
-                            ) : (
-                                <div className="w-64 h-64 flex items-center justify-center bg-green-50 rounded-lg border-2 border-dashed border-green-200">
-                                    <div className="text-center">
-                                        <CheckCircle2 className="w-12 h-12 text-green-400 mx-auto mb-2" />
-                                        <p className="text-sm font-bold text-green-600">Miễn đóng</p>
+                            <div className="p-6 space-y-4">
+                                {/* Current → New */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Lương hiện tại</label>
+                                        <div className="bg-gray-100 rounded-lg px-3 py-2 text-xs font-bold text-gray-700 text-right">
+                                            {salaryModal.oldSalary.toLocaleString('vi-VN')}đ
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Lương mới</label>
+                                        <input
+                                            type="number"
+                                            value={salaryModal.newSalary || ''}
+                                            onChange={e => setSalaryModal(s => ({ ...s, newSalary: parseFloat(e.target.value) || 0 }))}
+                                            className="w-full bg-amber-50 border-2 border-amber-300 rounded-lg px-3 py-2 text-xs font-bold text-amber-800 text-right outline-none focus:ring-2 focus:ring-amber-200"
+                                        />
                                     </div>
                                 </div>
-                            )}
-                        </div>
-
-                        {/* Bank info */}
-                        <div className="px-5 pb-3">
-                            <div className="bg-gray-50 rounded-lg px-3 py-2 space-y-1 text-xs text-gray-600">
-                                <div className="flex justify-between"><span>Ngân hàng:</span><span className="font-bold">{settings.bank_name || BANK_CONFIG.bankId}</span></div>
-                                <div className="flex justify-between"><span>Số TK:</span><span className="font-bold font-mono">{settings.bank_account_number || BANK_CONFIG.accountNo}</span></div>
-                                <div className="flex justify-between"><span>Tên TK:</span><span className="font-bold">{settings.account_holder_name || BANK_CONFIG.accountName}</span></div>
-                                <div className="flex justify-between"><span>Nội dung CK:</span><span className="font-bold text-blue-600">DP T{String(selectedMonth).padStart(2, '0')}/{selectedYear} {qrMember.hoTen}</span></div>
+                                {/* Change indicator */}
+                                {salaryModal.newSalary !== salaryModal.oldSalary && (
+                                    <div className={`text-center text-xs font-bold py-1 rounded-lg ${salaryModal.newSalary > salaryModal.oldSalary ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                                        {salaryModal.newSalary > salaryModal.oldSalary ? '▲' : '▼'} {salaryModal.newSalary > salaryModal.oldSalary ? '+' : ''}{((salaryModal.newSalary - salaryModal.oldSalary)).toLocaleString('vi-VN')}đ
+                                        ({salaryModal.oldSalary > 0 ? ((salaryModal.newSalary - salaryModal.oldSalary) / salaryModal.oldSalary * 100).toFixed(1) : '∞'}%)
+                                    </div>
+                                )}
+                                {/* Effective date */}
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Tháng hiệu lực</label>
+                                        <select
+                                            value={salaryModal.effectiveMonth}
+                                            onChange={e => setSalaryModal(s => ({ ...s, effectiveMonth: parseInt(e.target.value) }))}
+                                            className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
+                                        >
+                                            {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>Tháng {i + 1}</option>)}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Năm hiệu lực</label>
+                                        <select
+                                            value={salaryModal.effectiveYear}
+                                            onChange={e => setSalaryModal(s => ({ ...s, effectiveYear: parseInt(e.target.value) }))}
+                                            className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
+                                        >
+                                            {Array.from({ length: 5 }, (_, i) => { const y = new Date().getFullYear() - 1 + i; return <option key={y} value={y}>{y}</option>; })}
+                                        </select>
+                                    </div>
+                                </div>
+                                {/* Reason */}
+                                <div>
+                                    <label className="text-[10px] font-bold uppercase text-gray-500 block mb-1">Lý do điều chỉnh (tùy chọn)</label>
+                                    <input
+                                        type="text"
+                                        value={salaryModal.reason}
+                                        onChange={e => setSalaryModal(s => ({ ...s, reason: e.target.value }))}
+                                        placeholder="VD: Tăng lương định kỳ, Điều chỉnh trợ cấp..."
+                                        className="w-full border-2 border-gray-200 rounded-lg px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-amber-200 focus:border-amber-400"
+                                    />
+                                </div>
+                            </div>
+                            {/* Actions */}
+                            <div className="px-6 pb-5 flex gap-2 justify-end">
+                                <button onClick={() => setSalaryModal(s => ({ ...s, open: false }))} className="px-4 py-2 rounded-lg text-xs font-bold text-gray-500 hover:bg-gray-100 transition-colors">
+                                    Hủy
+                                </button>
+                                <button
+                                    onClick={async () => {
+                                        if (salaryModal.newSalary <= 0) return;
+                                        // Save to history
+                                        await salaryHistoryService.createSalaryChange({
+                                            member_id: salaryModal.memberId,
+                                            old_salary: salaryModal.oldSalary,
+                                            new_salary: salaryModal.newSalary,
+                                            effective_month: salaryModal.effectiveMonth,
+                                            effective_year: salaryModal.effectiveYear,
+                                            reason: salaryModal.reason
+                                        });
+                                        // Update member salary
+                                        updateMember(salaryModal.memberId, { salary: salaryModal.newSalary });
+                                        // Refresh monthly changes
+                                        const [newChanges, newEffSals] = await Promise.all([
+                                            salaryHistoryService.fetchMonthlySalaryChanges(selectedMonth, selectedYear),
+                                            salaryHistoryService.fetchAllSalariesForMonth(selectedMonth, selectedYear)
+                                        ]);
+                                        setMonthlySalaryChanges(newChanges);
+                                        setEffectiveSalaries(newEffSals);
+                                        setSalaryModal(s => ({ ...s, open: false }));
+                                    }}
+                                    disabled={salaryModal.newSalary <= 0 || salaryModal.newSalary === salaryModal.oldSalary}
+                                    className="px-5 py-2 rounded-lg text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    Xác nhận điều chỉnh
+                                </button>
                             </div>
                         </div>
+                    </div>
+                )
+            }
 
-                        {/* Action buttons */}
-                        <div className="px-5 pb-5 grid grid-cols-3 gap-2">
-                            <button
-                                onClick={() => {
-                                    const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear, {
-                                        bankId: settings.bank_name,
-                                        accountNo: settings.bank_account_number,
-                                        accountName: settings.account_holder_name
-                                    });
-                                    const a = document.createElement('a');
-                                    a.href = url;
-                                    a.download = `QR_${qrMember.hoTen.replace(/\s/g, '_')}_T${String(selectedMonth).padStart(2, '0')}_${selectedYear}.png`;
-                                    a.target = '_blank';
-                                    a.click();
-                                }}
-                                className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors text-gray-600"
-                            >
-                                <Download className="w-4 h-4" />
-                                <span className="text-[10px] font-bold">Tải QR</span>
-                            </button>
-                            <button
-                                onClick={() => {
-                                    const url = getVietQRUrl(qrMember.feeAmount, qrMember.hoTen, selectedMonth, selectedYear, {
-                                        bankId: settings.bank_name,
-                                        accountNo: settings.bank_account_number,
-                                        accountName: settings.account_holder_name
-                                    });
-                                    navigator.clipboard.writeText(url);
-                                }}
-                                className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors text-blue-600"
-                            >
-                                <Share2 className="w-4 h-4" />
-                                <span className="text-[10px] font-bold">Copy link</span>
-                            </button>
-                            <button
-                                onClick={() => {
-                                    updateMember(qrMember.id, { paid: true });
-                                    setQrMember(null);
-                                }}
-                                className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-green-50 hover:bg-green-100 transition-colors text-green-600"
-                            >
-                                <CheckCircle2 className="w-4 h-4" />
-                                <span className="text-[10px] font-bold">Đã nộp</span>
-                            </button>
+            {/* ─── Salary History Popup ─── */}
+            {
+                salaryHistoryPopup.open && (
+                    <div className="fixed inset-0 bg-black/50 z-[9999] flex items-center justify-center p-4" onClick={() => setSalaryHistoryPopup(s => ({ ...s, open: false }))}>
+                        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden" onClick={e => e.stopPropagation()}>
+                            <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-white text-sm font-bold flex items-center gap-2">
+                                        <History className="w-4 h-4" /> Lịch sử điều chỉnh lương
+                                    </h3>
+                                    <p className="text-white/80 text-xs mt-1">{salaryHistoryPopup.memberName}</p>
+                                </div>
+                                <button onClick={() => setSalaryHistoryPopup(s => ({ ...s, open: false }))} className="text-white/60 hover:text-white">
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+                            <div className="p-6 max-h-[400px] overflow-y-auto">
+                                {salaryHistoryPopup.entries.length === 0 ? (
+                                    <div className="text-center py-8">
+                                        <Clock className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                                        <p className="text-xs text-gray-400 font-medium">Chưa có lịch sử điều chỉnh</p>
+                                        <p className="text-[10px] text-gray-300 mt-1">Lương hiện tại sẽ được áp dụng cho tất cả các tháng</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {salaryHistoryPopup.entries.map((entry, idx) => (
+                                            <div key={entry.id || idx} className="relative pl-6 pb-3 border-l-2 border-blue-200 last:border-l-transparent">
+                                                <div className="absolute left-[-5px] top-1 w-2.5 h-2.5 rounded-full bg-blue-500 border-2 border-white shadow" />
+                                                <div className="bg-gray-50 rounded-xl p-3">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-[10px] font-bold text-blue-600 uppercase">
+                                                            Tháng {entry.effective_month}/{entry.effective_year}
+                                                        </span>
+                                                        <span className="text-[9px] text-gray-400">
+                                                            {entry.created_at ? new Date(entry.created_at).toLocaleDateString('vi-VN') : ''}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-xs">
+                                                        <span className="text-gray-500">{entry.old_salary.toLocaleString('vi-VN')}đ</span>
+                                                        <span className="text-gray-400">→</span>
+                                                        <span className={`font-bold ${entry.new_salary > entry.old_salary ? 'text-green-600' : 'text-red-600'}`}>
+                                                            {entry.new_salary.toLocaleString('vi-VN')}đ
+                                                        </span>
+                                                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${entry.new_salary > entry.old_salary ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                                            {entry.new_salary > entry.old_salary ? '+' : ''}{((entry.new_salary - entry.old_salary)).toLocaleString('vi-VN')}đ
+                                                        </span>
+                                                    </div>
+                                                    {entry.reason && (
+                                                        <p className="text-[10px] text-gray-400 mt-1 italic">📝 {entry.reason}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             {/* Custom Confirm Modal */}
             <ConfirmModal
@@ -2141,7 +3159,7 @@ const PartyFeeAssistant: React.FC = () => {
                 onConfirm={() => handleConfirmResult(true)}
                 onCancel={() => handleConfirmResult(false)}
             />
-        </div>
+        </div >
     );
 };
 
