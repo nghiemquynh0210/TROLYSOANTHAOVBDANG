@@ -16,7 +16,7 @@ import * as XLSX from 'xlsx';
 import {
     fetchMembers as fetchDbMembers, syncAllMembers,
     upsertMember, deleteMember as deleteDbMember, deleteAllMembers,
-    recordPayment, fetchPayments, dbToAppMember, appToDbMember
+    recordPayment, fetchPayments, fetchYearToDateTotals, dbToAppMember, appToDbMember
 } from '../services/paymentService';
 import {
     fetchPartySettings, upsertPartySettings, PartySettings
@@ -29,7 +29,9 @@ import {
 } from '../services/financeService';
 import * as salaryHistoryService from '../services/salaryHistoryService';
 import { SalaryHistoryEntry } from '../services/salaryHistoryService';
-import { Search, Landmark, RefreshCw, History } from 'lucide-react';
+import { parseExcelToMembers } from '../services/fileParserService';
+import * as rosterService from '../services/rosterService';
+import { Search, Landmark, RefreshCw, History, Upload, ArrowRightLeft, LogIn, LogOut } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 // ─── Types ───────────────────────────────────────────
@@ -129,8 +131,6 @@ const PartyFeeAssistant: React.FC = () => {
 
     // Report state
     const now = new Date();
-    const [reportMonth, setReportMonth] = useState(now.getMonth() + 1);
-    const [reportYear, setReportYear] = useState(now.getFullYear());
     const [reportCopied, setReportCopied] = useState(false);
     const [showTextReport, setShowTextReport] = useState(false);
 
@@ -144,7 +144,8 @@ const PartyFeeAssistant: React.FC = () => {
         superior_party: '',
         bank_name: 'MB Bank',
         bank_account_number: '',
-        account_holder_name: ''
+        account_holder_name: '',
+        sepay_api_key: ''
     });
     const [settingsLoading, setSettingsLoading] = useState(false);
     const [settingsSaved, setSettingsSaved] = useState(false);
@@ -175,8 +176,6 @@ const PartyFeeAssistant: React.FC = () => {
 
     // Finance tab state
     const [financeEntries, setFinanceEntries] = useState<FinanceEntry[]>([]);
-    const [financeMonth, setFinanceMonth] = useState(now.getMonth() + 1);
-    const [financeYear, setFinanceYear] = useState(now.getFullYear());
     const [financeOpeningBalance, setFinanceOpeningBalance] = useState(0);
     const [financeLoading, setFinanceLoading] = useState(false);
     const [showFinanceForm, setShowFinanceForm] = useState(false);
@@ -200,6 +199,26 @@ const PartyFeeAssistant: React.FC = () => {
     // Effective salaries map (memberId -> salary) for the selected month/year
     const [effectiveSalaries, setEffectiveSalaries] = useState<Record<string, number>>({});
 
+    // Year-to-date payment totals (actual data from party_payments)
+    const [ytdTotals, setYtdTotals] = useState<{ monthlyTotals: Record<number, number>; grandTotal: number }>({ monthlyTotals: {}, grandTotal: 0 });
+
+    // Roster (monthly member tracking) state
+    const [activeMemberIds, setActiveMemberIds] = useState<Set<string>>(new Set());
+    const [rosterLoaded, setRosterLoaded] = useState(false);
+    const [transferModal, setTransferModal] = useState<{
+        open: boolean;
+        type: 'leave' | 'join';
+        memberId: string;
+        memberName: string;
+        month: number;
+        year: number;
+        reason: string;
+    }>({ open: false, type: 'leave', memberId: '', memberName: '', month: new Date().getMonth() + 1, year: new Date().getFullYear(), reason: '' });
+
+    // Import state
+    const [importing, setImporting] = useState(false);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
+
     // Custom confirm modal state
     const [confirmState, setConfirmState] = useState<{
         open: boolean;
@@ -222,27 +241,30 @@ const PartyFeeAssistant: React.FC = () => {
         setConfirmState(prev => ({ ...prev, open: false }));
     }, []);
 
-    // Load payment data for selected month/year
+    // Load payment data + active roster for selected month/year
     useEffect(() => {
-        const loadPayments = async () => {
+        const loadPaymentsAndRoster = async () => {
             setPaymentsLoading(true);
             try {
-                const payments = await fetchPayments(selectedMonth, selectedYear);
+                const [payments, effSals, activeIds] = await Promise.all([
+                    fetchPayments(selectedMonth, selectedYear),
+                    salaryHistoryService.fetchAllSalariesForMonth(selectedMonth, selectedYear),
+                    rosterService.getActiveMemberIds(selectedMonth, selectedYear)
+                ]);
                 const paidMap: Record<string, boolean> = {};
                 payments.forEach(p => {
                     if (p.paid) paidMap[p.member_id] = true;
                 });
                 setMonthlyPaidMap(paidMap);
-
-                // Fetch effective salaries for the selected month
-                const effSals = await salaryHistoryService.fetchAllSalariesForMonth(selectedMonth, selectedYear);
                 setEffectiveSalaries(effSals);
+                setActiveMemberIds(activeIds);
+                setRosterLoaded(true);
             } catch {
-                console.warn('Failed to load payments');
+                console.warn('Failed to load payments/roster');
             }
             setPaymentsLoading(false);
         };
-        loadPayments();
+        loadPaymentsAndRoster();
     }, [selectedMonth, selectedYear]);
 
     // Load monthly salary changes summary
@@ -256,6 +278,25 @@ const PartyFeeAssistant: React.FC = () => {
             }
         };
         loadSalaryChanges();
+    }, [selectedMonth, selectedYear, tabMode]);
+
+    // Auto-load finance entries & YTD totals when month/year changes or when entering report/finance tabs
+    useEffect(() => {
+        const loadFinanceAndYTD = async () => {
+            try {
+                const [entries, opening, ytd] = await Promise.all([
+                    fetchFinanceEntries(selectedMonth, selectedYear),
+                    calculateOpeningBalance(selectedMonth, selectedYear),
+                    fetchYearToDateTotals(selectedYear, selectedMonth)
+                ]);
+                setFinanceEntries(entries.filter(e => e.entry_type !== 'auto_dang_phi'));
+                setFinanceOpeningBalance(opening);
+                setYtdTotals(ytd);
+            } catch {
+                console.warn('Failed to load finance/YTD data');
+            }
+        };
+        loadFinanceAndYTD();
     }, [selectedMonth, selectedYear, tabMode]);
 
     // Toggle paid status for a member in selected month
@@ -290,6 +331,7 @@ const PartyFeeAssistant: React.FC = () => {
     }, [selectedMonth, selectedYear, members, showConfirm]);
 
     // Filter + sort members by Vietnamese name (A→Z by TÊN — last word)
+    // Now also filters by active roster for the selected month
     const filteredMembers = useMemo(() => {
         const getLastName = (fullName: string) => {
             const parts = fullName.trim().split(/\s+/);
@@ -301,35 +343,34 @@ const PartyFeeAssistant: React.FC = () => {
             const cmp = lastA.localeCompare(lastB, 'vi');
             return cmp !== 0 ? cmp : a.hoTen.localeCompare(b.hoTen, 'vi');
         };
-        if (!searchTerm.trim()) {
-            return [...members].map(m => {
-                const effectiveSalary = effectiveSalaries[m.id] !== undefined ? effectiveSalaries[m.id] : m.salary;
-                if (effectiveSalary === m.salary) return m;
-                // Recalculate fee if salary shifted
-                const fee = calculatePartyFee(m.loaiHinh || 'bhxh', {
-                    salary: effectiveSalary,
-                    region: m.vung || 'Vùng I'
-                });
-                return { ...m, salary: effectiveSalary, feeAmount: fee.amount };
-            }).sort(sortFn);
-        }
-        const q = searchTerm.toLowerCase().trim();
-        return members
-            .filter(m =>
-                m.hoTen.toLowerCase().includes(q) ||
-                m.chucVu.toLowerCase().includes(q)
+        // Step 1: Filter by active roster (if loaded)
+        const rosterFiltered = rosterLoaded && activeMemberIds.size > 0
+            ? members.filter(m => activeMemberIds.has(m.id))
+            : members;
+        // Step 2: Apply search filter
+        const searchFiltered = searchTerm.trim()
+            ? rosterFiltered.filter(m =>
+                m.hoTen.toLowerCase().includes(searchTerm.toLowerCase().trim()) ||
+                m.chucVu.toLowerCase().includes(searchTerm.toLowerCase().trim())
             )
-            .map(m => {
-                const effectiveSalary = effectiveSalaries[m.id] !== undefined ? effectiveSalaries[m.id] : m.salary;
-                if (effectiveSalary === m.salary) return m;
-                const fee = calculatePartyFee(m.loaiHinh || 'bhxh', {
-                    salary: effectiveSalary,
-                    region: m.vung || 'Vùng I'
-                });
-                return { ...m, salary: effectiveSalary, feeAmount: fee.amount };
-            })
-            .sort(sortFn);
-    }, [members, searchTerm, effectiveSalaries]);
+            : rosterFiltered;
+        // Step 3: Apply effective salaries + sort
+        return searchFiltered.map(m => {
+            const effectiveSalary = effectiveSalaries[m.id] !== undefined ? effectiveSalaries[m.id] : m.salary;
+            if (effectiveSalary === m.salary) return m;
+            const fee = calculatePartyFee(m.loaiHinh || 'bhxh', {
+                salary: effectiveSalary,
+                region: m.vung || 'Vùng I'
+            });
+            return { ...m, salary: effectiveSalary, feeAmount: fee.amount };
+        }).sort(sortFn);
+    }, [members, searchTerm, effectiveSalaries, activeMemberIds, rosterLoaded]);
+
+    // Inactive members for the current month (for display purposes)
+    const inactiveMembers = useMemo(() => {
+        if (!rosterLoaded || activeMemberIds.size === 0) return [];
+        return members.filter(m => !activeMemberIds.has(m.id));
+    }, [members, activeMemberIds, rosterLoaded]);
 
     // ─── Calculator logic ────────────────────
     const typeInfo = useMemo(() =>
@@ -423,6 +464,9 @@ const PartyFeeAssistant: React.FC = () => {
                 // Fetch settings
                 const dbSettings = await fetchPartySettings();
                 if (dbSettings) setSettings(dbSettings);
+
+                // Migrate existing members to roster (one-time)
+                await rosterService.migrateExistingMembers(1, 2026);
             } catch (err) {
                 console.warn('Supabase data fetch failed:', err);
             }
@@ -460,7 +504,73 @@ const PartyFeeAssistant: React.FC = () => {
         setShowPasteArea(false);
     }, [pasteText, members, defaultType, defaultRegion, recalcFee, persistMembers]);
 
-    const handleAddOne = useCallback(() => {
+    const handleImportExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setImporting(true);
+        try {
+            const parsedMembers = await parseExcelToMembers(file);
+            if (parsedMembers.length === 0) {
+                await showConfirm('Không tìm thấy dữ liệu hợp lệ trong file.', 'Thông báo', 'info');
+                setImporting(false);
+                return;
+            }
+
+            const confirmed = await showConfirm(
+                `Tìm thấy ${parsedMembers.length} đảng viên. Bạn có muốn nhập vào danh sách?`,
+                'Xác nhận nhập file',
+                'success'
+            );
+
+            if (!confirmed) {
+                setImporting(false);
+                return;
+            }
+
+            // Map to DB format and sync
+            const dbMembers = parsedMembers.map(m => {
+                const memberType = (m.memberType as MemberType) || defaultType;
+                const salary = m.salary || 0;
+                const region = m.region || defaultRegion;
+
+                const dbM = appToDbMember({
+                    id: crypto.randomUUID(),
+                    stt: m.stt || 0,
+                    hoTen: m.hoTen,
+                    chucVu: m.chucVu || '',
+                    ngayVaoDang: m.ngayVaoDang || '',
+                    memberType,
+                    salary,
+                    region,
+                    feeAmount: recalcFee({ memberType, salary, region }),
+                    paid: false,
+                    note: m.note || ''
+                });
+                return dbM;
+            });
+
+            const success = await syncAllMembers(dbMembers);
+            if (success) {
+                // Refresh list
+                const freshDbList = await fetchDbMembers();
+                const appList = freshDbList.map(dbToAppMember) as PartyMember[];
+                setMembers(appList);
+                saveMembers(appList, userId || undefined);
+                await showConfirm(`Đã nhập thành công ${parsedMembers.length} đảng viên.`, 'Thành công', 'success');
+            } else {
+                await showConfirm('Lỗi khi lưu dữ liệu vào cơ sở dữ liệu.', 'Lỗi', 'warning');
+            }
+        } catch (err) {
+            console.error('Import error:', err);
+            await showConfirm('Lỗi khi xử lý file: ' + (err instanceof Error ? err.message : 'Lỗi không xác định'), 'Lỗi', 'warning');
+        } finally {
+            setImporting(false);
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
+
+    const handleAddOne = useCallback(async () => {
         const m: PartyMember = {
             id: crypto.randomUUID(),
             stt: members.length + 1,
@@ -476,7 +586,13 @@ const PartyFeeAssistant: React.FC = () => {
         };
         m.feeAmount = recalcFee(m);
         persistMembers([...members, m]);
-    }, [members, defaultType, defaultRegion, recalcFee, persistMembers]);
+        // Auto-create join event for the new member
+        setTimeout(async () => {
+            await rosterService.recordJoinEvent(m.id, selectedMonth, selectedYear, 'Thêm mới');
+            const activeIds = await rosterService.getActiveMemberIds(selectedMonth, selectedYear);
+            setActiveMemberIds(activeIds);
+        }, 500); // Wait for Supabase sync
+    }, [members, defaultType, defaultRegion, recalcFee, persistMembers, selectedMonth, selectedYear]);
 
     const updateMember = useCallback((id: string, updates: Partial<PartyMember>) => {
         const updated = members.map(m => {
@@ -494,6 +610,34 @@ const PartyFeeAssistant: React.FC = () => {
         persistMembers(updated);
         deleteDbMember(id); // Remove from Supabase too
     }, [members, persistMembers]);
+
+    // Handle transfer confirmation (leave/rejoin)
+    const handleTransferConfirm = useCallback(async () => {
+        const { type, memberId, month, year, reason } = transferModal;
+        if (!memberId) return;
+
+        let ok = false;
+        if (type === 'leave') {
+            ok = await rosterService.recordLeaveEvent(memberId, month, year, reason || 'Chuyển sinh hoạt');
+        } else {
+            ok = await rosterService.recordJoinEvent(memberId, month, year, reason || 'Tiếp nhận');
+        }
+
+        if (ok) {
+            // Refresh active member IDs
+            const activeIds = await rosterService.getActiveMemberIds(selectedMonth, selectedYear);
+            setActiveMemberIds(activeIds);
+            setTransferModal(prev => ({ ...prev, open: false }));
+            await showConfirm(
+                type === 'leave'
+                    ? `Đã ghi nhận chuyển đi từ T${String(month).padStart(2, '0')}/${year}.`
+                    : `Đã ghi nhận tiếp nhận từ T${String(month).padStart(2, '0')}/${year}.`,
+                'Thành công', 'success'
+            );
+        } else {
+            await showConfirm('Lỗi khi ghi nhận. Vui lòng thử lại.', 'Lỗi', 'warning');
+        }
+    }, [transferModal, selectedMonth, selectedYear, showConfirm]);
 
     const clearAll = useCallback(async () => {
         const confirmed = await showConfirm(
@@ -886,6 +1030,18 @@ const PartyFeeAssistant: React.FC = () => {
                                         className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
                                         <ClipboardPaste className="w-3.5 h-3.5" /> Dán từ Excel
                                     </button>
+                                    <button onClick={() => fileInputRef.current?.click()}
+                                        disabled={importing}
+                                        className={`px-3 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm ${importing ? 'opacity-50 cursor-wait' : ''}`}>
+                                        <Upload className="w-3.5 h-3.5" /> {importing ? 'Đang nhập...' : 'Nhập từ File'}
+                                    </button>
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        onChange={handleImportExcel}
+                                        accept=".csv, .xlsx, .xls"
+                                        className="hidden"
+                                    />
                                     <button onClick={handleAddOne}
                                         className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
                                         <UserPlus className="w-3.5 h-3.5" /> Thêm 1 ĐV
@@ -952,7 +1108,8 @@ const PartyFeeAssistant: React.FC = () => {
                                                 const { results, error } = await checkPaymentsForMonth(
                                                     members.map(m => ({ id: m.id, hoTen: m.hoTen, feeAmount: m.feeAmount })),
                                                     selectedMonth,
-                                                    selectedYear
+                                                    selectedYear,
+                                                    settings.sepay_api_key
                                                 );
                                                 if (error) {
                                                     setSepayError(error);
@@ -1303,7 +1460,22 @@ const PartyFeeAssistant: React.FC = () => {
                                                                 className="text-blue-400 hover:text-blue-600 transition-colors p-1 rounded hover:bg-blue-50">
                                                                 <QrCode className="w-3.5 h-3.5" />
                                                             </button>
+                                                            <button
+                                                                onClick={() => setTransferModal({
+                                                                    open: true,
+                                                                    type: 'leave',
+                                                                    memberId: m.id,
+                                                                    memberName: m.hoTen,
+                                                                    month: selectedMonth,
+                                                                    year: selectedYear,
+                                                                    reason: ''
+                                                                })}
+                                                                title="Chuyển đi / Chuyển sinh hoạt"
+                                                                className="text-orange-400 hover:text-orange-600 transition-colors p-1 rounded hover:bg-orange-50">
+                                                                <LogOut className="w-3.5 h-3.5" />
+                                                            </button>
                                                             <button onClick={() => removeMember(m.id)}
+                                                                title="Xóa vĩnh viễn"
                                                                 className="text-gray-300 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-50">
                                                                 <X className="w-3.5 h-3.5" />
                                                             </button>
@@ -1336,6 +1508,42 @@ const PartyFeeAssistant: React.FC = () => {
                                 </table>
                             </div>
 
+                            {/* ── Inactive / Transferred members ── */}
+                            {inactiveMembers.length > 0 && (
+                                <div className="mx-4 mt-4 mb-2 bg-gray-50 rounded-xl border border-gray-200 overflow-hidden">
+                                    <div className="px-4 py-2 bg-gray-100 flex items-center gap-2">
+                                        <ArrowRightLeft className="w-3.5 h-3.5 text-gray-500" />
+                                        <span className="text-[10px] font-bold text-gray-600 uppercase tracking-wider">
+                                            ĐV đã chuyển đi / Không sinh hoạt — T{String(selectedMonth).padStart(2, '0')}/{selectedYear}
+                                        </span>
+                                        <span className="ml-auto text-[10px] font-bold text-gray-500 bg-gray-200 px-2 py-0.5 rounded-full">
+                                            {inactiveMembers.length}
+                                        </span>
+                                    </div>
+                                    <div className="divide-y divide-gray-100">
+                                        {inactiveMembers.map(m => (
+                                            <div key={m.id} className="px-4 py-2 flex items-center gap-3 text-xs">
+                                                <span className="font-bold text-gray-500 min-w-[140px]">{m.hoTen}</span>
+                                                <span className="text-gray-400 text-[10px]">{m.chucVu}</span>
+                                                <button
+                                                    onClick={() => setTransferModal({
+                                                        open: true,
+                                                        type: 'join',
+                                                        memberId: m.id,
+                                                        memberName: m.hoTen,
+                                                        month: selectedMonth,
+                                                        year: selectedYear,
+                                                        reason: ''
+                                                    })}
+                                                    className="ml-auto flex items-center gap-1 px-2 py-1 bg-green-50 hover:bg-green-100 text-green-700 rounded-lg text-[10px] font-bold transition-colors"
+                                                >
+                                                    <LogIn className="w-3 h-3" /> Tiếp nhận lại
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                             {/* Monthly Salary Changes Summary */}
                             {monthlySalaryChanges.length > 0 && (
                                 <div className="mx-4 mt-4 mb-2 bg-blue-50 rounded-xl border border-blue-200 overflow-hidden">
@@ -1433,10 +1641,10 @@ const PartyFeeAssistant: React.FC = () => {
                             <div className="flex items-center justify-between flex-wrap gap-3">
                                 <div className="flex items-center gap-3">
                                     <label className="text-xs font-bold text-gray-700">Kỳ báo cáo:</label>
-                                    <select value={reportMonth} onChange={e => setReportMonth(Number(e.target.value))} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                                    <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
                                         {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>Tháng {String(i + 1).padStart(2, '0')}</option>)}
                                     </select>
-                                    <select value={reportYear} onChange={e => setReportYear(Number(e.target.value))} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                                    <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
                                         {Array.from({ length: 5 }, (_, i) => { const y = new Date().getFullYear() - 1 + i; return <option key={y} value={y}>{y}</option>; })}
                                     </select>
                                 </div>
@@ -1453,18 +1661,18 @@ const PartyFeeAssistant: React.FC = () => {
                                             const totalFee = members.reduce((s, m) => s + m.feeAmount, 0);
                                             const chiBoGiu = Math.round(totalFee * RETENTION_RATES.chiBoGiu / 100);
                                             const nopCapTren = totalFee - chiBoGiu;
-                                            const mm = String(reportMonth).padStart(2, '0');
+                                            const mm = String(selectedMonth).padStart(2, '0');
 
                                             /* ── Build worksheet data ── */
                                             const wsData: (string | number | null)[][] = [
                                                 /* Row 0: Header left */
                                                 [settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………', null, null, null, null, null, 'ĐẢNG CỘNG SẢN VIỆT NAM'],
-                                                [settings.branch_name || 'CHI BỘ ……………', null, null, null, null, null, `……………, ngày …… tháng ${mm} năm ${reportYear}`],
+                                                [settings.branch_name || 'CHI BỘ ……………', null, null, null, null, null, `……………, ngày …… tháng ${mm} năm ${selectedYear}`],
                                                 ['*'],
                                                 [],
                                                 /* Row 3-4: Title */
                                                 [null, null, null, 'BÁO CÁO THU, NỘP ĐẢNG PHÍ'],
-                                                [null, null, null, `(Tháng ${mm} năm ${reportYear})`],
+                                                [null, null, null, `(Tháng ${mm} năm ${selectedYear})`],
                                                 [],
                                                 /* Row 7: Table header */
                                                 ['TT', 'Chỉ tiêu', 'Đơn vị tính', 'Mã số', 'Đảng bộ xã, phường', 'Đảng bộ doanh nghiệp', 'Đảng bộ khác', 'Cộng', 'Ghi chú'],
@@ -1473,25 +1681,25 @@ const PartyFeeAssistant: React.FC = () => {
                                                 /* Row II */
                                                 ['II', 'Đảng phí đã thu được từ chi bộ của cấp báo cáo', null, null, null, null, null, null, null],
                                                 [null, '1. Kỳ báo cáo', 'Đồng', '02', totalFee || null, null, null, totalFee || null, null],
-                                                [null, '2. Từ đầu năm đến cuối kỳ báo cáo', 'Đồng', '03', totalFee * reportMonth || null, null, null, totalFee * reportMonth || null, null],
+                                                [null, '2. Từ đầu năm đến cuối kỳ báo cáo', 'Đồng', '03', ytdTotals.grandTotal || null, null, null, ytdTotals.grandTotal || null, null],
                                                 /* Row III */
                                                 ['III', 'Đảng phí trích giữ lại ở các cấp', null, null, null, null, null, null, null],
                                                 [null, '1. Kỳ báo cáo (05+06+07)', 'Đồng', '04', chiBoGiu || null, null, null, chiBoGiu || null, `(${RETENTION_RATES.chiBoGiu}%)`],
                                                 [null, '1.1 Chi bộ, đảng bộ bộ phận', 'Đồng', '05', chiBoGiu || null, null, null, chiBoGiu || null, null],
                                                 [null, '1.2 Tổ chức cơ sở đảng', 'Đồng', '06', null, null, null, null, null],
                                                 [null, '1.3 Cấp trên cơ sở', 'Đồng', '07', null, null, null, null, null],
-                                                [null, '2. Từ đầu năm đến cuối kỳ báo cáo (09+10+11)', 'Đồng', '08', chiBoGiu * reportMonth || null, null, null, chiBoGiu * reportMonth || null, null],
-                                                [null, '2.1 Chi bộ, đảng bộ bộ phận', 'Đồng', '09', chiBoGiu * reportMonth || null, null, null, chiBoGiu * reportMonth || null, null],
+                                                [null, '2. Từ đầu năm đến cuối kỳ báo cáo (09+10+11)', 'Đồng', '08', Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100) || null, null, null, Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100) || null, null],
+                                                [null, '2.1 Chi bộ, đảng bộ bộ phận', 'Đồng', '09', Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100) || null, null, null, Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100) || null, null],
                                                 [null, '2.2 Tổ chức cơ sở đảng', 'Đồng', '10', null, null, null, null, null],
                                                 [null, '2.3 Cấp trên cơ sở', 'Đồng', '11', null, null, null, null, null],
                                                 /* Row IV */
                                                 ['IV', 'Đảng phí nộp cấp trên của cấp báo cáo', null, null, null, null, null, null, null],
                                                 [null, '1. Số phải nộp kỳ báo cáo (02–04)', 'Đồng', '12', nopCapTren || null, null, null, nopCapTren || null, `(${RETENTION_RATES.nopCapTren}%)`],
-                                                [null, '2. Từ đầu năm đến cuối kỳ báo cáo (03–08)', 'Đồng', '13', nopCapTren * reportMonth || null, null, null, nopCapTren * reportMonth || null, null],
+                                                [null, '2. Từ đầu năm đến cuối kỳ báo cáo (03–08)', 'Đồng', '13', (ytdTotals.grandTotal - Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100)) || null, null, null, (ytdTotals.grandTotal - Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100)) || null, null],
                                                 [null, '3. Số còn nợ chưa nộp cấp trên đến cuối kỳ báo cáo', 'Đồng', '14', null, null, null, null, null],
                                                 [],
                                                 /* Footer */
-                                                ['Người lập', null, null, null, null, null, `……………, ngày …… tháng …… năm ${reportYear}`],
+                                                ['Người lập', null, null, null, null, null, `……………, ngày …… tháng …… năm ${selectedYear}`],
                                                 [null, null, null, null, null, null, 'T/M cấp ủy'],
                                             ];
 
@@ -1524,12 +1732,12 @@ const PartyFeeAssistant: React.FC = () => {
                                                 { s: { r: 22, c: 1 }, e: { r: 22, c: 8 } }, // Section IV header
                                             ];
 
-                                            XLSX.utils.book_append_sheet(wb, ws, `T${mm}-${reportYear}`);
+                                            XLSX.utils.book_append_sheet(wb, ws, `T${mm}-${selectedYear}`);
                                             const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
                                             const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                                             const url = URL.createObjectURL(blob);
                                             const a = document.createElement('a');
-                                            a.href = url; a.download = `BaoCao_DangPhi_T${mm}_${reportYear}.xlsx`;
+                                            a.href = url; a.download = `BaoCao_DangPhi_T${mm}_${selectedYear}.xlsx`;
                                             a.click(); URL.revokeObjectURL(url);
                                         }}
                                         className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition-colors"
@@ -1563,7 +1771,7 @@ const PartyFeeAssistant: React.FC = () => {
                                 const typeRows = typeStats.map((s, i) =>
                                     `${i + 1}. ${s.label}: ${s.count} đồng chí — Tổng đảng phí: ${s.totalFee.toLocaleString('vi-VN')}đ/tháng`
                                 ).join('\n');
-                                return `${settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………'}                    ĐẢNG CỘNG SẢN VIỆT NAM\n${settings.branch_name || 'CHI BỘ ……………'}\n                                              ……………, ngày …… tháng ${String(reportMonth).padStart(2, '0')} năm ${reportYear}\n\nBÁO CÁO\nVề tình hình thực hiện đóng đảng phí theo Quy định số 01-QĐ/TW\nngày 03/02/2026 của Bộ Chính trị\n(Tháng ${String(reportMonth).padStart(2, '0')} năm ${reportYear})\n-----\n\nKính gửi: Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường ……………'}\n\nThực hiện Quy định số 01-QĐ/TW ngày 03/02/2026 của Bộ Chính trị về chế độ đảng phí (có hiệu lực từ ngày 01/02/2026), ${settings.branch_name || 'Chi bộ ……………'} xin báo cáo tình hình triển khai thực hiện như sau:\n\nI. THỐNG KÊ TÌNH HÌNH THỰC HIỆN ĐÓNG ĐẢNG PHÍ\n\n1. Tổng số đảng viên chi bộ: ${totalMembers} đồng chí\n   - Đã hoàn thành nghĩa vụ đảng phí: ${paidCount} đồng chí (${totalMembers > 0 ? Math.round(paidCount / totalMembers * 100) : 0}%)\n   - Được miễn đóng đảng phí: ${exemptCount} đồng chí\n\n2. Thống kê theo nhóm đối tượng:\n${typeRows}\n\nTỔNG ĐẢNG PHÍ THU ĐƯỢC KỲ BÁO CÁO: ${totalFee.toLocaleString('vi-VN')}đ\n\nII. TÌNH HÌNH TRÍCH NỘP\n\n- Tổng đảng phí đã thu kỳ báo cáo (mã 02): ${totalFee.toLocaleString('vi-VN')}đ\n- Trích giữ lại chi bộ ${RETENTION_RATES.chiBoGiu}% (mã 04): ${chiBoGiu.toLocaleString('vi-VN')}đ\n- Nộp cấp trên ${RETENTION_RATES.nopCapTren}% (mã 12): ${nopCapTren.toLocaleString('vi-VN')}đ\n- Lũy kế từ đầu năm (mã 03): ${(totalFee * reportMonth).toLocaleString('vi-VN')}đ\n\nIII. ĐÁNH GIÁ VIỆC ÁP DỤNG CÔNG NGHỆ SỐ\n\n- Tỷ lệ sử dụng Sổ tay đảng viên điện tử: ……%\n- Tỷ lệ đăng ký Cổng Dịch vụ công Quốc gia: ……%\n\nIV. KHÓ KHĂN, VƯỚNG MẮC VÀ KIẾN NGHỊ\n\n1. Khó khăn: (nêu cụ thể)\n2. Kiến nghị: (nêu cụ thể)\n\nV. CAM KẾT THỰC HIỆN NGUYÊN TẮC \"3Đ\"\n\n- ĐÚNG mức đóng theo QĐ 01-QĐ/TW\n- ĐỦ số lượng đảng viên (${totalMembers}/${totalMembers} = ${complianceRate}%)\n- ĐỀU đặn thu nộp hàng tháng, đúng hạn\n\nTrên đây là báo cáo tình hình thực hiện đóng đảng phí. Kính đề nghị Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường'} xem xét, chỉ đạo./.\n\nNơi nhận:                                          T/M ${settings.branch_name?.split(' ')[0] || 'CHI BỘ'}\n- Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường'} (báo cáo);                           BÍ THƯ\n- Ban chi ủy;\n- Lưu Chi bộ.`;
+                                return `${settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………'}                    ĐẢNG CỘNG SẢN VIỆT NAM\n${settings.branch_name || 'CHI BỘ ……………'}\n                                              ……………, ngày …… tháng ${String(selectedMonth).padStart(2, '0')} năm ${selectedYear}\n\nBÁO CÁO\nVề tình hình thực hiện đóng đảng phí theo Quy định số 01-QĐ/TW\nngày 03/02/2026 của Bộ Chính trị\n(Tháng ${String(selectedMonth).padStart(2, '0')} năm ${selectedYear})\n-----\n\nKính gửi: Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường ……………'}\n\nThực hiện Quy định số 01-QĐ/TW ngày 03/02/2026 của Bộ Chính trị về chế độ đảng phí (có hiệu lực từ ngày 01/02/2026), ${settings.branch_name || 'Chi bộ ……………'} xin báo cáo tình hình triển khai thực hiện như sau:\n\nI. THỐNG KÊ TÌNH HÌNH THỰC HIỆN ĐÓNG ĐẢNG PHÍ\n\n1. Tổng số đảng viên chi bộ: ${totalMembers} đồng chí\n   - Đã hoàn thành nghĩa vụ đảng phí: ${paidCount} đồng chí (${totalMembers > 0 ? Math.round(paidCount / totalMembers * 100) : 0}%)\n   - Được miễn đóng đảng phí: ${exemptCount} đồng chí\n\n2. Thống kê theo nhóm đối tượng:\n${typeRows}\n\nTỔNG ĐẢNG PHÍ THU ĐƯỢC KỲ BÁO CÁO: ${totalFee.toLocaleString('vi-VN')}đ\n\nII. TÌNH HÌNH TRÍCH NỘP\n\n- Tổng đảng phí đã thu kỳ báo cáo (mã 02): ${totalFee.toLocaleString('vi-VN')}đ\n- Trích giữ lại chi bộ ${RETENTION_RATES.chiBoGiu}% (mã 04): ${chiBoGiu.toLocaleString('vi-VN')}đ\n- Nộp cấp trên ${RETENTION_RATES.nopCapTren}% (mã 12): ${nopCapTren.toLocaleString('vi-VN')}đ\n- Lũy kế từ đầu năm (mã 03): ${(ytdTotals.grandTotal).toLocaleString('vi-VN')}đ\n\nIII. ĐÁNH GIÁ VIỆC ÁP DỤNG CÔNG NGHỆ SỐ\n\n- Tỷ lệ sử dụng Sổ tay đảng viên điện tử: ……%\n- Tỷ lệ đăng ký Cổng Dịch vụ công Quốc gia: ……%\n\nIV. KHÓ KHĂN, VƯỚNG MẮC VÀ KIẾN NGHỊ\n\n1. Khó khăn: (nêu cụ thể)\n2. Kiến nghị: (nêu cụ thể)\n\nV. CAM KẾT THỰC HIỆN NGUYÊN TẮC \"3Đ\"\n\n- ĐÚNG mức đóng theo QĐ 01-QĐ/TW\n- ĐỦ số lượng đảng viên (${totalMembers}/${totalMembers} = ${complianceRate}%)\n- ĐỀU đặn thu nộp hàng tháng, đúng hạn\n\nTrên đây là báo cáo tình hình thực hiện đóng đảng phí. Kính đề nghị Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường'} xem xét, chỉ đạo./.\n\nNơi nhận:                                          T/M ${settings.branch_name?.split(' ')[0] || 'CHI BỘ'}\n- Đảng ủy ${settings.superior_party?.replace(/ĐẢNG BỘ /i, '') || 'phường'} (báo cáo);                           BÍ THƯ\n- Ban chi ủy;\n- Lưu Chi bộ.`;
                             };
 
                             const handleCopyReport = () => {
@@ -1611,13 +1819,13 @@ const PartyFeeAssistant: React.FC = () => {
                                                 <Clock className="w-5 h-5" />
                                                 <span className="text-xs font-black uppercase tracking-wider">ĐỀU</span>
                                             </div>
-                                            <p className="text-2xl font-black">T{String(reportMonth).padStart(2, '0')}/{reportYear}</p>
+                                            <p className="text-2xl font-black">T{String(selectedMonth).padStart(2, '0')}/{selectedYear}</p>
                                             <p className="text-amber-200 text-[10px] mt-1">Nộp đều đặn hàng tháng</p>
                                             <div className="mt-2 flex items-center gap-1.5">
                                                 <CheckCircle2 className="w-3.5 h-3.5 text-amber-200" />
                                                 <span className="text-[9px] text-amber-100">Thu: {fmt(totalFee)}</span>
                                             </div>
-                                            <p className="text-amber-100 text-[9px] mt-1">Lũy kế: {fmt(totalFee * reportMonth)}</p>
+                                            <p className="text-amber-100 text-[9px] mt-1">Lũy kế: {fmt(ytdTotals.grandTotal)}</p>
                                         </div>
                                     </div>
                                 )}
@@ -1712,12 +1920,12 @@ const PartyFeeAssistant: React.FC = () => {
                                             </div>
                                             <div className="text-right">
                                                 <p className="text-xs font-bold">ĐẢNG CỘNG SẢN VIỆT NAM</p>
-                                                <p className="text-xs italic">……………, ngày …… tháng {String(reportMonth).padStart(2, '0')} năm {reportYear}</p>
+                                                <p className="text-xs italic">……………, ngày …… tháng {String(selectedMonth).padStart(2, '0')} năm {selectedYear}</p>
                                             </div>
                                         </div>
                                         <div className="pt-3">
                                             <h3 className="text-sm font-black uppercase">BÁO CÁO THU, NỘP ĐẢNG PHÍ</h3>
-                                            <p className="text-xs">(Tháng {String(reportMonth).padStart(2, '0')} năm {reportYear})</p>
+                                            <p className="text-xs">(Tháng {String(selectedMonth).padStart(2, '0')} năm {selectedYear})</p>
                                         </div>
                                     </div>
 
@@ -1771,10 +1979,10 @@ const PartyFeeAssistant: React.FC = () => {
                                                     <td className="border border-gray-400 px-2 py-1.5 pl-4">2. Từ đầu năm đến cuối kỳ báo cáo</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-center">03</td>
-                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(totalFee * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(ytdTotals.grandTotal)}</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(totalFee * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(ytdTotals.grandTotal)}</td>
                                                     <td className="border border-gray-400 px-2 py-1.5"></td>
                                                 </tr>
                                                 {/* III. Đảng phí trích giữ lại (30%) */}
@@ -1831,10 +2039,10 @@ const PartyFeeAssistant: React.FC = () => {
                                                     <td className="border border-gray-400 px-2 py-1.5 pl-4">2. Từ đầu năm đến cuối kỳ báo cáo (09+10+11)</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-center">08</td>
-                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100))}</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(chiBoGiu * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100))}</td>
                                                     <td className="border border-gray-400 px-2 py-1.5"></td>
                                                 </tr>
                                                 <tr>
@@ -1842,10 +2050,10 @@ const PartyFeeAssistant: React.FC = () => {
                                                     <td className="border border-gray-400 px-2 py-1.5 pl-6">2.1 Chi bộ, đảng bộ bộ phận</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-center">09</td>
-                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100))}</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(chiBoGiu * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100))}</td>
                                                     <td className="border border-gray-400 px-2 py-1.5"></td>
                                                 </tr>
                                                 <tr>
@@ -1891,10 +2099,10 @@ const PartyFeeAssistant: React.FC = () => {
                                                     <td className="border border-gray-400 px-2 py-1.5 pl-4">2. Từ đầu năm đến cuối kỳ báo cáo (03–08)</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-center">Đồng</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-center">13</td>
-                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt(nopCapTren * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right">{fmt((ytdTotals.grandTotal - Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100)))}</td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
                                                     <td className="border border-gray-400 px-2 py-1.5 text-right"></td>
-                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt(nopCapTren * reportMonth)}</td>
+                                                    <td className="border border-gray-400 px-2 py-1.5 text-right font-bold">{fmt((ytdTotals.grandTotal - Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100)))}</td>
                                                     <td className="border border-gray-400 px-2 py-1.5"></td>
                                                 </tr>
                                                 <tr>
@@ -1919,7 +2127,7 @@ const PartyFeeAssistant: React.FC = () => {
                                                 <p className="text-xs font-bold underline">Người lập</p>
                                             </div>
                                             <div className="text-center">
-                                                <p className="text-xs italic">……………, ngày …… tháng …… năm {reportYear}</p>
+                                                <p className="text-xs italic">……………, ngày …… tháng …… năm {selectedYear}</p>
                                                 <p className="text-xs font-bold">T/M cấp ủy</p>
                                             </div>
                                         </div>
@@ -1934,9 +2142,9 @@ const PartyFeeAssistant: React.FC = () => {
                             const totalFee = members.reduce((s, m) => s + m.feeAmount, 0);
                             const autoDP = Math.round(totalFee * RETENTION_RATES.chiBoGiu / 100);
                             // Finance data for report period
-                            const manualThuKPCapTren = financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.thu_kinh_phi_cap_tren || 0), 0);
-                            const manualThuKhac = financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.thu_khac || 0), 0);
-                            const totalChi = financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_bao_tap_chi || 0) + (e.chi_dai_hoi || 0) + (e.chi_khen_thuong || 0) + (e.chi_ho_tro || 0) + (e.chi_phu_cap_cap_uy || 0) + (e.chi_khac || 0), 0);
+                            const manualThuKPCapTren = financeEntries.filter(e => e.month === selectedMonth && e.year === selectedYear).reduce((s, e) => s + (e.thu_kinh_phi_cap_tren || 0), 0);
+                            const manualThuKhac = financeEntries.filter(e => e.month === selectedMonth && e.year === selectedYear).reduce((s, e) => s + (e.thu_khac || 0), 0);
+                            const totalChi = financeEntries.filter(e => e.month === selectedMonth && e.year === selectedYear).reduce((s, e) => s + (e.chi_bao_tap_chi || 0) + (e.chi_dai_hoi || 0) + (e.chi_khen_thuong || 0) + (e.chi_ho_tro || 0) + (e.chi_phu_cap_cap_uy || 0) + (e.chi_khac || 0), 0);
 
                             // Mã numbers
                             const ma01 = financeOpeningBalance; // Số dư kỳ trước chuyển sang
@@ -1949,8 +2157,8 @@ const PartyFeeAssistant: React.FC = () => {
                             const ma08 = ma06 - ma07;           // KP còn lại
 
                             // Cumulative (from beginning of year)
-                            const allYearEntries = financeEntries.filter(e => e.year === reportYear && e.month <= reportMonth);
-                            const cumDP = autoDP * reportMonth; // simplified: same fee each month
+                            const allYearEntries = financeEntries.filter(e => e.year === selectedYear && e.month <= selectedMonth);
+                            const cumDP = Math.round(ytdTotals.grandTotal * RETENTION_RATES.chiBoGiu / 100); // actual YTD retention from payments
                             const cumKPCapTren = allYearEntries.reduce((s, e) => s + (e.thu_kinh_phi_cap_tren || 0), 0);
                             const cumThuKhac = allYearEntries.reduce((s, e) => s + (e.thu_khac || 0), 0);
                             const cumChi = allYearEntries.reduce((s, e) => s + (e.chi_bao_tap_chi || 0) + (e.chi_dai_hoi || 0) + (e.chi_khen_thuong || 0) + (e.chi_ho_tro || 0) + (e.chi_phu_cap_cap_uy || 0) + (e.chi_khac || 0), 0);
@@ -1960,16 +2168,16 @@ const PartyFeeAssistant: React.FC = () => {
 
                             // Expense breakdown for Phần III
                             const chiBreakdown = [
-                                { muc: '1', label: 'Mua báo, tạp chí', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_bao_tap_chi || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_bao_tap_chi || 0), 0) },
-                                { muc: '2', label: 'Chi đại hội, hội nghị', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_dai_hoi || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_dai_hoi || 0), 0) },
-                                { muc: '3', label: 'Khen thưởng', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_khen_thuong || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_khen_thuong || 0), 0) },
-                                { muc: '4', label: 'Chi hỗ trợ, thăm hỏi', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_ho_tro || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_ho_tro || 0), 0) },
-                                { muc: '5', label: 'Phụ cấp cấp ủy', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_phu_cap_cap_uy || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_phu_cap_cap_uy || 0), 0) },
-                                { muc: '6', label: 'Chi khác', ky: financeEntries.filter(e => e.month === reportMonth && e.year === reportYear).reduce((s, e) => s + (e.chi_khac || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_khac || 0), 0) },
+                                { muc: '1', label: 'Mua báo, tạp chí', ky: financeEntries.filter(e => e.month === selectedMonth && e.year === selectedYear).reduce((s, e) => s + (e.chi_bao_tap_chi || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_bao_tap_chi || 0), 0) },
+                                { muc: '2', label: 'Chi đại hội, hội nghị', ky: financeEntries.filter(e => e.month === selectedMonth && e.year === selectedYear).reduce((s, e) => s + (e.chi_dai_hoi || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_dai_hoi || 0), 0) },
+                                { muc: '3', label: 'Khen thưởng', ky: financeEntries.filter(e => e.month === selectedMonth && e.year === selectedYear).reduce((s, e) => s + (e.chi_khen_thuong || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_khen_thuong || 0), 0) },
+                                { muc: '4', label: 'Chi hỗ trợ, thăm hỏi', ky: financeEntries.filter(e => e.month === selectedMonth && e.year === selectedYear).reduce((s, e) => s + (e.chi_ho_tro || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_ho_tro || 0), 0) },
+                                { muc: '5', label: 'Phụ cấp cấp ủy', ky: financeEntries.filter(e => e.month === selectedMonth && e.year === selectedYear).reduce((s, e) => s + (e.chi_phu_cap_cap_uy || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_phu_cap_cap_uy || 0), 0) },
+                                { muc: '6', label: 'Chi khác', ky: financeEntries.filter(e => e.month === selectedMonth && e.year === selectedYear).reduce((s, e) => s + (e.chi_khac || 0), 0), luyKe: allYearEntries.reduce((s, e) => s + (e.chi_khac || 0), 0) },
                             ];
 
                             const fmt = (n: number) => n === 0 ? '' : n.toLocaleString('vi-VN');
-                            const mm = String(reportMonth).padStart(2, '0');
+                            const mm = String(selectedMonth).padStart(2, '0');
 
                             return (<>
                                 {/* Divider */}
@@ -1991,7 +2199,7 @@ const PartyFeeAssistant: React.FC = () => {
                                         </div>
                                         <div className="text-center mt-4 mb-2">
                                             <p className="text-sm font-black uppercase">BÁO CÁO TÌNH HÌNH KINH PHÍ HOẠT ĐỘNG CỦA CHI BỘ</p>
-                                            <p className="text-xs italic mt-1">Tháng {mm} năm {reportYear}</p>
+                                            <p className="text-xs italic mt-1">Tháng {mm} năm {selectedYear}</p>
                                         </div>
                                     </div>
 
@@ -2123,7 +2331,7 @@ const PartyFeeAssistant: React.FC = () => {
                                                 <p className="text-xs font-bold underline">Người lập</p>
                                             </div>
                                             <div className="text-center">
-                                                <p className="text-xs italic">……………, ngày …… tháng …… năm {reportYear}</p>
+                                                <p className="text-xs italic">……………, ngày …… tháng …… năm {selectedYear}</p>
                                                 <p className="text-xs font-bold">T/M cấp ủy</p>
                                             </div>
                                         </div>
@@ -2137,7 +2345,7 @@ const PartyFeeAssistant: React.FC = () => {
                                                 [settings.branch_name || 'CHI BỘ ……………', null, null, null, '─────────'],
                                                 [],
                                                 [null, 'BÁO CÁO TÌNH HÌNH KINH PHÍ HOẠT ĐỘNG CỦA CHI BỘ'],
-                                                [null, null, `Tháng ${mm} năm ${reportYear}`],
+                                                [null, null, `Tháng ${mm} năm ${selectedYear}`],
                                                 [],
                                                 ['Phần I - Tình hình tổ chức đảng, tiền lương'],
                                                 [`1- Tổng số đảng viên: ${totalMembers} đồng chí`],
@@ -2177,7 +2385,7 @@ const PartyFeeAssistant: React.FC = () => {
                                             const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                                             const url = URL.createObjectURL(blob);
                                             const a = document.createElement('a');
-                                            a.href = url; a.download = `BaoCao_KinhPhi_T${mm}_${reportYear}.xlsx`;
+                                            a.href = url; a.download = `BaoCao_KinhPhi_T${mm}_${selectedYear}.xlsx`;
                                             a.click(); URL.revokeObjectURL(url);
                                         }}
                                             className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition-colors"
@@ -2204,15 +2412,15 @@ const PartyFeeAssistant: React.FC = () => {
                     // ── Build virtual auto entry ──
                     const autoEntry: FinanceEntry = {
                         id: '__auto_dp__',
-                        entry_date: `${financeYear}-${String(financeMonth).padStart(2, '0')}-01`,
+                        entry_date: `${selectedYear}-${String(selectedMonth).padStart(2, '0')}-01`,
                         ref_number: '',
-                        description: `Đảng phí T${String(financeMonth).padStart(2, '0')}/${financeYear} — ${paidMembers.length}/${members.filter(m => m.feeAmount > 0).length} ĐV`,
+                        description: `Đảng phí T${String(selectedMonth).padStart(2, '0')}/${selectedYear} — ${paidMembers.length}/${members.filter(m => m.feeAmount > 0).length} ĐV`,
                         entry_type: 'auto_dang_phi',
                         thu_dang_phi: autoPartyFeeAmount,
                         thu_kinh_phi_cap_tren: 0, thu_khac: 0,
                         chi_bao_tap_chi: 0, chi_dai_hoi: 0, chi_khen_thuong: 0,
                         chi_ho_tro: 0, chi_phu_cap_cap_uy: 0, chi_khac: 0,
-                        month: financeMonth, year: financeYear,
+                        month: selectedMonth, year: selectedYear,
                     };
 
                     // ── All entries = auto + manual ──
@@ -2230,8 +2438,8 @@ const PartyFeeAssistant: React.FC = () => {
                         setFinanceLoading(true);
                         try {
                             const [entries, opening] = await Promise.all([
-                                fetchFinanceEntries(financeMonth, financeYear),
-                                calculateOpeningBalance(financeMonth, financeYear)
+                                fetchFinanceEntries(selectedMonth, selectedYear),
+                                calculateOpeningBalance(selectedMonth, selectedYear)
                             ]);
                             setFinanceEntries(entries.filter(e => e.entry_type !== 'auto_dang_phi'));
                             setFinanceOpeningBalance(opening);
@@ -2268,10 +2476,10 @@ const PartyFeeAssistant: React.FC = () => {
                                         <BookOpen className="w-4 h-4 text-teal-600" />
                                         <span className="text-xs font-black text-gray-800 uppercase tracking-wider">Sổ thu, chi tài chính Chi bộ</span>
                                         <div className="flex items-center gap-2">
-                                            <select value={financeMonth} onChange={e => { setFinanceMonth(Number(e.target.value)); setTimeout(loadFinanceData, 50); }} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                                            <select value={selectedMonth} onChange={e => setSelectedMonth(Number(e.target.value))} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
                                                 {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>Tháng {String(i + 1).padStart(2, '0')}</option>)}
                                             </select>
-                                            <select value={financeYear} onChange={e => { setFinanceYear(Number(e.target.value)); setTimeout(loadFinanceData, 50); }} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
+                                            <select value={selectedYear} onChange={e => setSelectedYear(Number(e.target.value))} className="border border-gray-300 rounded-lg px-2 py-1 text-xs">
                                                 {Array.from({ length: 5 }, (_, i) => { const y = new Date().getFullYear() - 1 + i; return <option key={y} value={y}>{y}</option>; })}
                                             </select>
                                             <button onClick={loadFinanceData} className="p-1.5 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors" title="Tải lại">
@@ -2281,14 +2489,14 @@ const PartyFeeAssistant: React.FC = () => {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button onClick={() => {
-                                            const mm = String(financeMonth).padStart(2, '0');
+                                            const mm = String(selectedMonth).padStart(2, '0');
                                             const wsData: (string | number | null)[][] = [
                                                 [settings.superior_party || 'ĐẢNG BỘ PHƯỜNG ……………', null, null, null, null, null, null, null, null, null, null, null, null, null, null],
                                                 [settings.branch_name || 'CHI BỘ ……………', null, null, null, null, null, null, null, null, null, null, null, null, null, null],
                                                 [],
                                                 [null, null, null, null, 'SỔ THU, CHI TÀI CHÍNH CỦA CHI BỘ'],
                                                 [null, null, null, null, null, `Đơn vị tính: đồng`],
-                                                [null, null, null, null, null, `Tháng ${mm} năm ${financeYear}`],
+                                                [null, null, null, null, null, `Tháng ${mm} năm ${selectedYear}`],
                                                 [],
                                                 ['Ngày tháng', 'Số hiệu', 'Diễn giải', 'Đảng phí (1)', 'KP cấp trên cấp (2)', 'Thu khác (3)', 'Tổng thu (4)', 'Báo, tạp chí (5)', 'Đại hội (6)', 'Khen thưởng (7)', 'Chi hỗ trợ (8)', 'Phụ cấp cấp ủy (9)', 'Chi khác (10)', 'Tổng Chi (11)', 'Tồn quỹ (12)'],
                                                 // Opening balance
@@ -2341,7 +2549,7 @@ const PartyFeeAssistant: React.FC = () => {
                                             const blob2 = new Blob([wbout2], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
                                             const url2 = URL.createObjectURL(blob2);
                                             const a2 = document.createElement('a');
-                                            a2.href = url2; a2.download = `SoThuChi_T${mm}_${financeYear}.xlsx`;
+                                            a2.href = url2; a2.download = `SoThuChi_T${mm}_${selectedYear}.xlsx`;
                                             a2.click(); URL.revokeObjectURL(url2);
                                         }}
                                             className="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm">
@@ -2362,7 +2570,7 @@ const PartyFeeAssistant: React.FC = () => {
                                 </div>
                                 <div className="flex-1 min-w-0">
                                     <p className="text-xs font-bold text-amber-800">
-                                        Đảng phí T{String(financeMonth).padStart(2, '0')}/{financeYear}: Thu {totalCollectedDP.toLocaleString('vi-VN')}đ từ {paidMembers.length} ĐV
+                                        Đảng phí T{String(selectedMonth).padStart(2, '0')}/{selectedYear}: Thu {totalCollectedDP.toLocaleString('vi-VN')}đ từ {paidMembers.length} ĐV
                                         → Chi bộ giữ {RETENTION_RATES.chiBoGiu}% = <span className="text-base">{autoPartyFeeAmount.toLocaleString('vi-VN')}đ</span>
                                     </p>
                                     <p className="text-[10px] text-amber-600 mt-0.5">Tự động liên kết từ tab "Danh sách ĐV" • 30% ({Math.round(totalCollectedDP * RETENTION_RATES.nopCapTren / 100).toLocaleString('vi-VN')}đ) nộp cấp trên</p>
@@ -2516,7 +2724,7 @@ const PartyFeeAssistant: React.FC = () => {
                             {/* ─── ADD/EDIT FINANCE ENTRY MODAL ── */}
                             {showFinanceForm && (() => {
                                 const isEdit = !!editingFinanceEntry?.id && editingFinanceEntry.id !== '__auto_dp__';
-                                const initial = isEdit ? editingFinanceEntry! : emptyEntry(financeMonth, financeYear);
+                                const initial = isEdit ? editingFinanceEntry! : emptyEntry(selectedMonth, selectedYear);
                                 return (
                                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => { setShowFinanceForm(false); setEditingFinanceEntry(null); }}>
                                         <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full mx-4 overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -2545,8 +2753,8 @@ const PartyFeeAssistant: React.FC = () => {
                                                     chi_ho_tro: Number(fd.get('chi_ho_tro')) || 0,
                                                     chi_phu_cap_cap_uy: Number(fd.get('chi_phu_cap_cap_uy')) || 0,
                                                     chi_khac: Number(fd.get('chi_khac')) || 0,
-                                                    month: financeMonth,
-                                                    year: financeYear,
+                                                    month: selectedMonth,
+                                                    year: selectedYear,
                                                 };
                                                 await handleSaveEntry(entry);
                                             }} className="overflow-y-auto flex-1 p-5 space-y-4">
@@ -2698,6 +2906,16 @@ const PartyFeeAssistant: React.FC = () => {
                                                 className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all uppercase font-bold"
                                             />
                                         </div>
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1">SePay API Key (Tùy chọn - Để tự động đối soát CK)</label>
+                                            <input
+                                                type="password"
+                                                value={settings.sepay_api_key}
+                                                onChange={e => setSettings({ ...settings, sepay_api_key: e.target.value })}
+                                                placeholder="Nhập API Key từ SePay.vn (Nếu có)"
+                                                className="w-full border-2 border-gray-100 rounded-xl px-3 py-2 text-xs focus:border-amber-400 focus:ring-0 transition-all font-mono"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -2734,7 +2952,8 @@ const PartyFeeAssistant: React.FC = () => {
                             <div className="text-[10px] text-blue-700 leading-relaxed">
                                 <p className="font-bold uppercase mb-1 underline">Lưu ý quan trọng:</p>
                                 <ul className="list-disc pl-4 space-y-1">
-                                    <li><strong>Mã ngân hàng:</strong> Sử dụng mã định danh VietQR (Ví dụ: MB Bank = <code>MB</code>, Vietcombank = <code>VCB</code>, Agribank = <code>VBA</code>, ICB, v.v.).</li>
+                                    <li><strong>Mã ngân hàng:</strong> Sử dụng mã định danh VietQR (Ví dụ: MB, VCB, VBA, ICB, v.v.).</li>
+                                    <li><strong>Đối soát tự động (SePay):</strong> Đây là tính năng **Tùy chọn**. Nếu không có API Key, bạn vẫn có thể nộp và nộp thủ công bình thường.</li>
                                     <li><strong>Tính riêng tư:</strong> Thông tin này là riêng biệt cho từng tài khoản chi bộ.</li>
                                     <li><strong>Mã QR:</strong> Sau khi lưu, mã QR đóng đảng phí sẽ tự động cập nhật theo số tài khoản này.</li>
                                 </ul>
@@ -3149,6 +3368,74 @@ const PartyFeeAssistant: React.FC = () => {
                     </div>
                 )
             }
+
+            {/* ═══════════ Transfer Modal ═══════════ */}
+            {transferModal.open && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full animate-in fade-in zoom-in-95">
+                        <div className={`px-6 py-4 rounded-t-2xl ${transferModal.type === 'leave' ? 'bg-gradient-to-r from-orange-500 to-red-500' : 'bg-gradient-to-r from-green-500 to-emerald-600'}`}>
+                            <div className="flex items-center gap-3 text-white">
+                                {transferModal.type === 'leave'
+                                    ? <LogOut className="w-5 h-5" />
+                                    : <LogIn className="w-5 h-5" />}
+                                <h3 className="text-sm font-black uppercase tracking-wider">
+                                    {transferModal.type === 'leave' ? 'Chuyển đi / Rời chi bộ' : 'Tiếp nhận đảng viên'}
+                                </h3>
+                            </div>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="text-xs font-bold text-gray-600 block mb-1">Đảng viên</label>
+                                <p className="text-sm font-bold text-gray-900">{transferModal.memberName}</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                    <label className="text-xs font-bold text-gray-600 block mb-1">Tháng hiệu lực</label>
+                                    <select
+                                        value={transferModal.month}
+                                        onChange={e => setTransferModal(prev => ({ ...prev, month: Number(e.target.value) }))}
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs"
+                                    >
+                                        {Array.from({ length: 12 }, (_, i) => <option key={i + 1} value={i + 1}>Tháng {String(i + 1).padStart(2, '0')}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="text-xs font-bold text-gray-600 block mb-1">Năm</label>
+                                    <select
+                                        value={transferModal.year}
+                                        onChange={e => setTransferModal(prev => ({ ...prev, year: Number(e.target.value) }))}
+                                        className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs"
+                                    >
+                                        {Array.from({ length: 5 }, (_, i) => { const y = new Date().getFullYear() - 1 + i; return <option key={y} value={y}>{y}</option>; })}
+                                    </select>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-xs font-bold text-gray-600 block mb-1">Lý do</label>
+                                <input
+                                    type="text"
+                                    value={transferModal.reason}
+                                    onChange={e => setTransferModal(prev => ({ ...prev, reason: e.target.value }))}
+                                    placeholder={transferModal.type === 'leave' ? 'Chuyển sinh hoạt, Xin nghỉ...' : 'Chuyển đến, Kết nạp mới...'}
+                                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs"
+                                />
+                            </div>
+                        </div>
+                        <div className="px-6 pb-6 flex items-center justify-end gap-3">
+                            <button
+                                onClick={() => setTransferModal(prev => ({ ...prev, open: false }))}
+                                className="px-4 py-2 text-xs font-bold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200"
+                            >Hủy</button>
+                            <button
+                                onClick={handleTransferConfirm}
+                                className={`px-4 py-2 text-xs font-bold text-white rounded-lg ${transferModal.type === 'leave' ? 'bg-orange-600 hover:bg-orange-700' : 'bg-green-600 hover:bg-green-700'}`}
+                            >
+                                {transferModal.type === 'leave' ? 'Xác nhận chuyển đi' : 'Xác nhận tiếp nhận'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Custom Confirm Modal */}
             <ConfirmModal

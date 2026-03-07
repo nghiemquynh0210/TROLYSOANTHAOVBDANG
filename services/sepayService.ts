@@ -112,10 +112,13 @@ function normalizeName(name: string): string {
 export async function fetchSepayTransactions(
     fromDate?: string,
     toDate?: string,
-    limit: number = 100
+    limit: number = 100,
+    overrideApiKey?: string
 ): Promise<{ transactions: SepayTransaction[]; error: string | null }> {
-    if (!SEPAY_API_KEY) {
-        return { transactions: [], error: 'Chưa cấu hình SePay API Key (VITE_SEPAY_API_KEY)' };
+    const apiKey = overrideApiKey || SEPAY_API_KEY;
+
+    if (!apiKey) {
+        return { transactions: [], error: 'Chưa cấu hình SePay API Key' };
     }
 
     try {
@@ -130,7 +133,7 @@ export async function fetchSepayTransactions(
         const response = await fetch(url, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${SEPAY_API_KEY}`,
+                'Authorization': `Bearer ${apiKey}`,
                 'Content-Type': 'application/json'
             }
         });
@@ -361,10 +364,11 @@ export function getMonthDateRange(month: number, year: number): { fromDate: stri
 export async function checkPaymentsForMonth(
     members: { id: string; hoTen: string; feeAmount: number }[],
     month: number,
-    year: number
+    year: number,
+    overrideApiKey?: string
 ): Promise<{ results: MatchResult[]; error: string | null }> {
     const { fromDate, toDate } = getMonthDateRange(month, year);
-    const { transactions, error } = await fetchSepayTransactions(fromDate, toDate);
+    const { transactions, error } = await fetchSepayTransactions(fromDate, toDate, 100, overrideApiKey);
 
     if (error) {
         return { results: [], error };

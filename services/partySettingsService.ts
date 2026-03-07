@@ -8,6 +8,7 @@ export interface PartySettings {
     bank_name: string;
     bank_account_number: string;
     account_holder_name: string;
+    sepay_api_key?: string;
 }
 
 /** Helper to get current user ID */
@@ -35,7 +36,8 @@ export async function fetchPartySettings(): Promise<PartySettings | null> {
                     superior_party: '',
                     bank_name: 'MB Bank',
                     bank_account_number: '',
-                    account_holder_name: ''
+                    account_holder_name: '',
+                    sepay_api_key: ''
                 };
             }
             console.error('fetchPartySettings error:', error);

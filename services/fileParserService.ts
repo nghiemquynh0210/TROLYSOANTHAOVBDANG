@@ -1,3 +1,5 @@
+import { MEMBER_TYPES, MemberType } from '../data/partyFee';
+
 /**
  * File Parser Service
  * Trích xuất text từ PDF, DOCX, TXT phía client-side
@@ -90,4 +92,47 @@ export function formatFileSize(bytes: number): string {
     if (bytes < 1024) return `${bytes} B`;
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * Parse Excel/CSV to PartyMember objects
+ */
+export async function parseExcelToMembers(file: File): Promise<any[]> {
+    const XLSX = await import('xlsx');
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+    const firstSheetName = workbook.SheetNames[0];
+    const worksheet = workbook.Sheets[firstSheetName];
+    const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+    // Map column names flexibly
+    return jsonData.map((row: any, index) => {
+        const getVal = (keywords: string[]) => {
+            const key = Object.keys(row).find(k =>
+                keywords.some(kw => k.toLowerCase().includes(kw.toLowerCase()))
+            );
+            return key ? row[key] : null;
+        };
+
+        const memberTypeLabel = getVal(['đối tượng', 'loại', 'type']);
+        let memberType: MemberType = 'bhxh';
+        if (memberTypeLabel) {
+            const found = MEMBER_TYPES.find(t =>
+                t.label.toLowerCase() === String(memberTypeLabel).toLowerCase() ||
+                t.key.toLowerCase() === String(memberTypeLabel).toLowerCase()
+            );
+            if (found) memberType = found.key;
+        }
+
+        return {
+            stt: parseInt(getVal(['stt', 'số thứ tự'])) || index + 1,
+            hoTen: getVal(['họ tên', 'họ và tên', 'name', 'đảng viên']) || '',
+            chucVu: getVal(['chức vụ', 'vị trí', 'position']) || '',
+            ngayVaoDang: String(getVal(['ngày vào đảng', 'ngày vào']) || ''),
+            salary: parseFloat(String(getVal(['lương', 'trợ cấp', 'thu nhập', 'salary']) || '0').replace(/[^0-9.]/g, '')) || 0,
+            memberType,
+            region: getVal(['vùng', 'khu vực', 'region']) || 'Vùng I',
+            note: getVal(['ghi chú', 'note']) || ''
+        };
+    }).filter(m => m.hoTen); // Require at least a name
 }

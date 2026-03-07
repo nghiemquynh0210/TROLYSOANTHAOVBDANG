@@ -119,14 +119,14 @@ export async function deleteAllMembers(): Promise<boolean> {
     try {
         const userId = await getCurrentUserId();
         console.log('[deleteAllMembers] Starting delete for user:', userId);
-        
+
         // First, count how many exist
         const { count: existingCount } = await supabase
             .from('party_members')
             .select('id', { count: 'exact', head: true })
             .eq('user_id', userId);
         console.log('[deleteAllMembers] Members to delete:', existingCount);
-        
+
         if (!existingCount || existingCount === 0) {
             console.log('[deleteAllMembers] No members found, nothing to delete');
             return true;
@@ -136,25 +136,25 @@ export async function deleteAllMembers(): Promise<boolean> {
             .from('party_members')
             .delete({ count: 'exact' })
             .eq('user_id', userId);
-        
+
         if (error) {
             console.error('[deleteAllMembers] Supabase error:', JSON.stringify(error));
             return false;
         }
-        
+
         console.log(`[deleteAllMembers] Successfully deleted ${count ?? '?'} members`);
-        
+
         // Verify deletion
         const { count: remainingCount } = await supabase
             .from('party_members')
             .select('id', { count: 'exact', head: true })
             .eq('user_id', userId);
-        
+
         if (remainingCount && remainingCount > 0) {
             console.warn(`[deleteAllMembers] WARNING: ${remainingCount} members still remain after delete!`);
             return false;
         }
-        
+
         console.log('[deleteAllMembers] Verified: all members deleted successfully');
         return true;
     } catch (err) {
@@ -215,6 +215,35 @@ export async function fetchPayments(month: number, year: number): Promise<DBPaym
         }
         return data || [];
     } catch { return []; }
+}
+
+/** Fetch total paid amounts per month for a year up to a given month.
+ *  Returns an object mapping month number -> total amount paid.
+ *  This queries actual payment records, not theoretical fee amounts. */
+export async function fetchYearToDateTotals(year: number, upToMonth: number): Promise<{ monthlyTotals: Record<number, number>; grandTotal: number }> {
+    try {
+        const userId = await getCurrentUserId();
+        const { data, error } = await supabase
+            .from('party_payments')
+            .select('month, amount')
+            .eq('user_id', userId)
+            .eq('year', year)
+            .eq('paid', true)
+            .lte('month', upToMonth);
+        if (error) {
+            console.error('fetchYearToDateTotals error:', error);
+            return { monthlyTotals: {}, grandTotal: 0 };
+        }
+        const monthlyTotals: Record<number, number> = {};
+        let grandTotal = 0;
+        (data || []).forEach(row => {
+            const m = Number(row.month);
+            const amt = Number(row.amount) || 0;
+            monthlyTotals[m] = (monthlyTotals[m] || 0) + amt;
+            grandTotal += amt;
+        });
+        return { monthlyTotals, grandTotal };
+    } catch { return { monthlyTotals: {}, grandTotal: 0 }; }
 }
 
 // ─── Conversion helpers ────────────────────────────

@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS party_settings (
     bank_name TEXT DEFAULT '',
     bank_account_number TEXT DEFAULT '',
     account_holder_name TEXT DEFAULT '',
+    sepay_api_key TEXT DEFAULT '',
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -271,6 +272,35 @@ ALTER TABLE member_salary_history ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Allow all for approved authenticated" ON member_salary_history;
 CREATE POLICY "Allow all for approved authenticated" ON member_salary_history
+    FOR ALL USING (
+        auth.uid() = user_id AND
+        EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND approved = TRUE)
+    ) WITH CHECK (
+        auth.uid() = user_id AND
+        EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND approved = TRUE)
+    );
+
+-- =========================================
+-- 10. Table: member_roster_history (biến động nhân sự theo tháng)
+-- Ghi lại sự kiện ĐV gia nhập/rời khỏi chi bộ
+-- =========================================
+CREATE TABLE IF NOT EXISTS member_roster_history (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    member_id UUID REFERENCES party_members(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL CHECK (event_type IN ('join', 'leave')),
+    effective_month INTEGER NOT NULL CHECK (effective_month BETWEEN 1 AND 12),
+    effective_year INTEGER NOT NULL CHECK (effective_year >= 2020),
+    reason TEXT DEFAULT '',  -- 'Chuyển sinh hoạt đến', 'Kết nạp mới', 'Chuyển đi', 'Xin nghỉ'...
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_roster_history_member ON member_roster_history(user_id, member_id, effective_year, effective_month);
+
+ALTER TABLE member_roster_history ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Allow all for approved authenticated" ON member_roster_history;
+CREATE POLICY "Allow all for approved authenticated" ON member_roster_history
     FOR ALL USING (
         auth.uid() = user_id AND
         EXISTS (SELECT 1 FROM public.user_profiles WHERE id = auth.uid() AND approved = TRUE)
